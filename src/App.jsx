@@ -395,6 +395,11 @@ const JSTQBExam = () => {
   const correctAnswerIndex = question.correct;
   const displayOptions = mappedOptions.map((opt) => opt.text);
 
+  // ★ 修正: 正解の表示位置を正しく計算 ★
+  // シャッフル後の配列で、正解に対応するインデックスを探す
+  const correctPositionInDisplay = mappedOptions.findIndex(opt => opt.originalIdx === correctAnswerIndex);
+  const correctOptionText = mappedOptions[correctPositionInDisplay]?.text || '';
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 py-8">
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl p-6">
@@ -403,7 +408,10 @@ const JSTQBExam = () => {
             <span className="text-sm font-semibold text-blue-600">
               問題 {currentQuestion + 1}/{questionList.length}
             </span>
-            <span className="text-xs text-gray-500">{question.category} - {question.chapter}</span>
+            {/* ★ 修正: 問題IDを追加表示 ★ */}
+            <span className="text-xs text-gray-500">
+              ID: {question.id} | {question.category} - {question.chapter}
+            </span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div
@@ -460,7 +468,8 @@ const JSTQBExam = () => {
             </p>
             <p className="text-sm text-gray-700 mb-3">{question.explanation}</p>
             <p className="text-xs text-gray-600">
-              正解: <span className="font-bold">{String.fromCharCode(65 + correctAnswerIndex)}</span>. {displayOptions[correctAnswerIndex]}
+              {/* ★ 修正: 正解の位置を正しく計算して表示 ★ */}
+              正解: <span className="font-bold">{String.fromCharCode(65 + correctPositionInDisplay)}</span>. {correctOptionText}
             </p>
           </div>
         )}
