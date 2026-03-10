@@ -1,6 +1,12 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+// ESModule で __dirname を取得
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ビルド時に実行される
 const buildInfo = {
   buildTime: new Date().toISOString(),
   buildDate: new Date().toLocaleString('ja-JP', {
