@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import buildInfo from '../build-info.json';
 
 const JSTQBExam = () => {
   // =========================================
@@ -298,6 +299,10 @@ const JSTQBExam = () => {
 
           <p className="text-xs text-gray-500 mt-4">
             データソース: Google Sheets（リアルタイム更新）
+          </p>
+
+          <p className="text-xs text-gray-400 mt-2 pt-2 border-t">
+            最終デプロイ: {buildInfo.buildDate}
           </p>
         </div>
       </div>
