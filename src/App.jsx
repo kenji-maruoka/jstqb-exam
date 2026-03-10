@@ -3,10 +3,11 @@ import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 
 const JSTQBExam = () => {
   // =========================================
-  // ★重要★ Google Sheets API URL を設定
+  // ★重要★ Google Sheets ID を設定
   // =========================================
   // YOUR_SHEET_ID を自分の Sheet ID に置き換えてください
-  const GOOGLE_SHEETS_URL = 'https://docs.google.com/spreadsheets/d/13y0AytiKRkgcFO43w9YQgpI85GHRUo8RIRnCVES_yCk/gviz/query?tqx=out:json&sheet=questions';
+  const SHEET_ID = '13y0AytiKRkgcFO43w9YQgpI85GHRUo8RIRnCVES_yCk';
+  const SHEET_NAME = 'questions';
 
   // =========================================
   // State管理
@@ -29,46 +30,101 @@ const JSTQBExam = () => {
     const fetchQuestions = async () => {
       try {
         console.log('📡 Google Sheets から問題データをフェッチしています...');
-        console.log('URL:', GOOGLE_SHEETS_URL);
 
-        const response = await fetch(GOOGLE_SHEETS_URL);
+        // CORS対応：複数のエンドポイントを試す
+        const urls = [
+          // 方法1: JSONP形式（推奨）
+          `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/query?tqx=out:json&sheet=${SHEET_NAME}`,
+          // 方法2: CSV形式をJSON に変換
+          `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`,
+        ];
 
-        if (!response.ok) {
-          throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+        let questions = null;
+        let lastError = null;
+
+        // 複数の方法を試す
+        for (const url of urls) {
+          try {
+            console.log('試行中:', url);
+            const response = await fetch(url, {
+              method: 'GET',
+              mode: 'cors',
+              headers: {
+                'Accept': 'application/json, text/plain, */*',
+              }
+            });
+
+            if (!response.ok) continue;
+
+            const text = await response.text();
+
+            // JSON形式の場合
+            if (text.includes('google.visualization')) {
+              const jsonString = text.substring(47).slice(0, -2);
+              const jsonData = JSON.parse(jsonString);
+
+              questions = jsonData.table.rows.map((row) => {
+                const cols = row.c;
+                if (!cols[0] || !cols[0].v) return null;
+
+                return {
+                  id: parseInt(cols[0].v),
+                  category: String(cols[1].v || ''),
+                  chapter: String(cols[2].v || ''),
+                  question: String(cols[3].v || ''),
+                  options: [
+                    String(cols[4].v || ''),
+                    String(cols[5].v || ''),
+                    String(cols[6].v || ''),
+                    String(cols[7].v || '')
+                  ],
+                  correct: parseInt(cols[8].v) || 0,
+                  explanation: String(cols[9].v || '')
+                };
+              }).filter(q => q !== null);
+              break;
+            }
+            // CSV形式の場合
+            else if (text.includes(',')) {
+              const lines = text.trim().split('\n');
+              questions = lines.slice(1).map((line) => {
+                // CSV パース（簡易版）
+                const parts = line.split(',');
+                if (!parts[0]) return null;
+
+                return {
+                  id: parseInt(parts[0]),
+                  category: parts[1] || '',
+                  chapter: parts[2] || '',
+                  question: parts[3] || '',
+                  options: [
+                    parts[4] || '',
+                    parts[5] || '',
+                    parts[6] || '',
+                    parts[7] || ''
+                  ],
+                  correct: parseInt(parts[8]) || 0,
+                  explanation: parts[9] || ''
+                };
+              }).filter(q => q !== null);
+              break;
+            }
+          } catch (err) {
+            lastError = err;
+            console.log('この方法は失敗:', err.message);
+            continue;
+          }
         }
 
-        // Google Visualization API の形式を解析
-        const text = await response.text();
-        
-        // Google Visualization API は JSONP 形式で、先頭の47文字と末尾の2文字を削除する必要がある
-        const jsonString = text.substring(47).slice(0, -2);
-        const jsonData = JSON.parse(jsonString);
-
-        // Google Sheets のデータを質問オブジェクトに変換
-        const questions = jsonData.table.rows.map((row) => {
-          const cols = row.c;
-          
-          // 空行をスキップ
-          if (!cols[0] || !cols[0].v) return null;
-
-          return {
-            id: parseInt(cols[0].v),
-            category: String(cols[1].v || ''),
-            chapter: String(cols[2].v || ''),
-            question: String(cols[3].v || ''),
-            options: [
-              String(cols[4].v || ''),
-              String(cols[5].v || ''),
-              String(cols[6].v || ''),
-              String(cols[7].v || '')
-            ],
-            correct: parseInt(cols[8].v) || 0,
-            explanation: String(cols[9].v || '')
-          };
-        }).filter(q => q !== null);
-
-        if (questions.length === 0) {
-          throw new Error('データが取得されませんでした。Google Sheet にデータが入っているか確認してください。');
+        if (!questions || questions.length === 0) {
+          throw new Error(
+            'データが取得されませんでした。' +
+            '【確認事項】\n' +
+            '1. Google Sheet ID が正しいか確認してください\n' +
+            '2. Google Sheet が「リンクを知っている人は表示可能」に設定されているか確認\n' +
+            '3. シート名が「questions」か確認してください\n' +
+            (lastError ? `\nエラー詳細: ${lastError.message}` : '')
+          );
         }
 
         console.log(`✅ ${questions.length}問のデータを取得しました`);
@@ -192,22 +248,15 @@ const JSTQBExam = () => {
         <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
           <div className="bg-red-50 border-2 border-red-500 rounded-lg p-4 mb-4">
             <h2 className="text-2xl font-bold text-red-600 mb-2">⚠️ エラーが発生しました</h2>
-            <p className="text-gray-700 text-sm mb-4">{error}</p>
+            <p className="text-gray-700 text-sm whitespace-pre-wrap mb-4">{error}</p>
           </div>
 
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded text-sm text-gray-700">
             <p className="font-bold mb-2">【対応方法】</p>
             <ol className="list-decimal list-inside space-y-1 text-xs">
-              <li>
-                Google Sheets URL が正しいか確認
-                <br />
-                <code className="bg-gray-200 px-1 rounded text-xs">
-                  YOUR_SHEET_ID を置き換えたか確認
-                </code>
-              </li>
-              <li>Google Sheet が「リンクを知っている人は表示可能」に設定されているか確認</li>
+              <li>Google Sheet ID が正しいか確認</li>
+              <li>Google Sheet が公開されているか確認</li>
               <li>シート名が「questions」か確認</li>
-              <li>Google Sheet にデータが入っているか確認</li>
             </ol>
           </div>
         </div>
