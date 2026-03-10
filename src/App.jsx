@@ -3,11 +3,10 @@ import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 
 const JSTQBExam = () => {
   // =========================================
-  // ★重要★ Google Apps Script のURLを設定
+  // ★重要★ Google Sheets API URL を設定
   // =========================================
-  // YOUR_SCRIPT_ID を自分のURLに置き換えてください
-  // 例: https://script.google.com/macros/d/1aAbcD1efGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKl/userweb
-  const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyZseKn9rTVgRD9rtt6c6ozQvIWQbaLWwcVaop-T1pakJXTM-LYMkgCMw1qeIahSFYVIw/userweb';
+  // YOUR_SHEET_ID を自分の Sheet ID に置き換えてください
+  const GOOGLE_SHEETS_URL = 'https://docs.google.com/spreadsheets/d/13y0AytiKRkgcFO43w9YQgpI85GHRUo8RIRnCVES_yCk/gviz/query?tqx=out:json&sheet=questions';
 
   // =========================================
   // State管理
@@ -24,32 +23,56 @@ const JSTQBExam = () => {
   const [error, setError] = useState(null);
 
   // =========================================
-  // Google Sheetsからデータを取得
+  // Google Sheets API からデータを取得
   // =========================================
   useEffect(() => {
     const fetchQuestions = async () => {
       try {
-        console.log('📡 Google Apps Scriptからデータをフェッチしています...');
-        console.log('URL:', GOOGLE_APPS_SCRIPT_URL);
+        console.log('📡 Google Sheets から問題データをフェッチしています...');
+        console.log('URL:', GOOGLE_SHEETS_URL);
 
-        const response = await fetch(GOOGLE_APPS_SCRIPT_URL);
+        const response = await fetch(GOOGLE_SHEETS_URL);
 
         if (!response.ok) {
           throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
         }
 
-        const data = await response.json();
+        // Google Visualization API の形式を解析
+        const text = await response.text();
+        
+        // Google Visualization API は JSONP 形式で、先頭の47文字と末尾の2文字を削除する必要がある
+        const jsonString = text.substring(47).slice(0, -2);
+        const jsonData = JSON.parse(jsonString);
 
-        if (data.error) {
-          throw new Error('Google Apps Scriptからエラーが返されました: ' + data.error);
+        // Google Sheets のデータを質問オブジェクトに変換
+        const questions = jsonData.table.rows.map((row) => {
+          const cols = row.c;
+          
+          // 空行をスキップ
+          if (!cols[0] || !cols[0].v) return null;
+
+          return {
+            id: parseInt(cols[0].v),
+            category: String(cols[1].v || ''),
+            chapter: String(cols[2].v || ''),
+            question: String(cols[3].v || ''),
+            options: [
+              String(cols[4].v || ''),
+              String(cols[5].v || ''),
+              String(cols[6].v || ''),
+              String(cols[7].v || '')
+            ],
+            correct: parseInt(cols[8].v) || 0,
+            explanation: String(cols[9].v || '')
+          };
+        }).filter(q => q !== null);
+
+        if (questions.length === 0) {
+          throw new Error('データが取得されませんでした。Google Sheet にデータが入っているか確認してください。');
         }
 
-        if (!Array.isArray(data) || data.length === 0) {
-          throw new Error('データが取得されませんでした。Google Sheetにデータが入っているか確認してください。');
-        }
-
-        console.log(`✅ ${data.length}問のデータを取得しました`);
-        setQuestions(data);
+        console.log(`✅ ${questions.length}問のデータを取得しました`);
+        setQuestions(questions);
         setLoading(false);
       } catch (err) {
         console.error('❌ エラーが発生しました:', err);
@@ -65,9 +88,6 @@ const JSTQBExam = () => {
   // ユーティリティ関数
   // =========================================
 
-  /**
-   * 配列をシャッフルする
-   */
   const shuffleArray = (array) => {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -81,17 +101,12 @@ const JSTQBExam = () => {
   // イベントハンドラ
   // =========================================
 
-  /**
-   * 模試を開始
-   */
   const handleStartQuiz = () => {
     if (questions.length === 0) return;
 
-    // ランダムに50問を選抜
     const selected = shuffleArray(questions).slice(0, 50);
     setShuffledQuestions(selected);
 
-    // 各問題の選択肢をシャッフル
     const optionsMappings = {};
     selected.forEach((q, idx) => {
       const shuffledOptions = shuffleArray(
@@ -108,9 +123,6 @@ const JSTQBExam = () => {
     setShowExplanation(false);
   };
 
-  /**
-   * 模試をリセット
-   */
   const handleReset = () => {
     setQuizStarted(false);
     setCurrentQuestion(0);
@@ -121,11 +133,7 @@ const JSTQBExam = () => {
     setOptionsMap({});
   };
 
-  /**
-   * 回答を選択
-   */
   const handleAnswerSelect = (answerIndex) => {
-    // 既に回答済みの場合はスキップ
     if (selectedAnswers[currentQuestion] !== undefined) return;
 
     const question = shuffledQuestions[currentQuestion];
@@ -139,9 +147,6 @@ const JSTQBExam = () => {
     setShowExplanation(true);
   };
 
-  /**
-   * 次の問題へ
-   */
   const handleNext = () => {
     if (currentQuestion < shuffledQuestions.length - 1) {
       setCurrentQuestion(currentQuestion + 1);
@@ -149,9 +154,6 @@ const JSTQBExam = () => {
     }
   };
 
-  /**
-   * 前の問題へ
-   */
   const handlePrev = () => {
     if (currentQuestion > 0) {
       setCurrentQuestion(currentQuestion - 1);
@@ -159,9 +161,6 @@ const JSTQBExam = () => {
     }
   };
 
-  /**
-   * 結果を確認
-   */
   const handleSubmit = () => {
     setShowResults(true);
   };
@@ -175,7 +174,7 @@ const JSTQBExam = () => {
         <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <h2 className="text-2xl font-bold text-blue-600 mb-2">データを読み込み中...</h2>
-          <p className="text-gray-600 mb-4">Google Sheetsから問題データを取得しています</p>
+          <p className="text-gray-600 mb-4">Google Sheets から問題データを取得しています</p>
           <p className="text-xs text-gray-500">
             このプロセスに数秒かかる場合があります
           </p>
@@ -200,19 +199,15 @@ const JSTQBExam = () => {
             <p className="font-bold mb-2">【対応方法】</p>
             <ol className="list-decimal list-inside space-y-1 text-xs">
               <li>
-                Google Apps ScriptのURLが正しいか確認
+                Google Sheets URL が正しいか確認
                 <br />
                 <code className="bg-gray-200 px-1 rounded text-xs">
-                  const GOOGLE_APPS_SCRIPT_URL = '...YOUR_SCRIPT_ID...'
+                  YOUR_SHEET_ID を置き換えたか確認
                 </code>
               </li>
-              <li>Google Sheetにデータが入っているか確認</li>
-              <li>Apps Scriptが「全員がアクセス可能」に設定されているか確認</li>
-              <li>
-                Google Apps Scriptコンソールで
-                <code className="bg-gray-200 px-1 rounded text-xs">testAPI()</code>
-                を実行して、正しくデータが返されるか確認
-              </li>
+              <li>Google Sheet が「リンクを知っている人は表示可能」に設定されているか確認</li>
+              <li>シート名が「questions」か確認</li>
+              <li>Google Sheet にデータが入っているか確認</li>
             </ol>
           </div>
         </div>
@@ -240,7 +235,7 @@ const JSTQBExam = () => {
               <li>✓ 長文問題：プロジェクト状況に基づいた判定</li>
               <li>✓ 見積もり：SMART関連問題充実</li>
               <li>✓ 毎回異なる出題順と選択肢順</li>
-              <li>✓ 問題はGoogle Sheetsから自動取得</li>
+              <li>✓ Google Sheets から自動取得</li>
               <li>✓ 問題追加時にコードの変更は不要</li>
             </ul>
           </div>
@@ -349,7 +344,6 @@ const JSTQBExam = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 py-8">
       <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl p-6">
-        {/* プログレスバー */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm font-semibold text-blue-600">
@@ -365,12 +359,10 @@ const JSTQBExam = () => {
           </div>
         </div>
 
-        {/* 問題文 */}
         <h2 className="text-lg font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-wrap">
           {question.question}
         </h2>
 
-        {/* 選択肢 */}
         <div className="space-y-3 mb-6">
           {displayOptions.map((option, index) => (
             <button
@@ -397,7 +389,6 @@ const JSTQBExam = () => {
           ))}
         </div>
 
-        {/* 解説 */}
         {showExplanation && (
           <div
             className={`mt-6 p-4 rounded-lg ${
@@ -420,7 +411,6 @@ const JSTQBExam = () => {
           </div>
         )}
 
-        {/* ナビゲーションボタン */}
         <div className="flex gap-2 mb-4 mt-6">
           <button
             onClick={handlePrev}
@@ -440,7 +430,6 @@ const JSTQBExam = () => {
           </button>
         </div>
 
-        {/* 結果確認ボタン */}
         {showExplanation && currentQuestion === questionList.length - 1 && (
           <button
             onClick={handleSubmit}
