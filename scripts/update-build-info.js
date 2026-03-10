@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 const path = require('path');
 
 // ビルド時に実行される関数
