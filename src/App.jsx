@@ -7,7 +7,7 @@ const JSTQBExam = () => {
   // =========================================
   // YOUR_SCRIPT_ID を自分のURLに置き換えてください
   // 例: https://script.google.com/macros/d/1aAbcD1efGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKl/userweb
-  const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyZseKn9rTVgRD9rtt6c6ozQvIWQbaLWwcVaop-T1pakJXTM-LYMkgCMw1qeIahSFYVIw/exec';
+  const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyZseKn9rTVgRD9rtt6c6ozQvIWQbaLWwcVaop-T1pakJXTM-LYMkgCMw1qeIahSFYVIw/userweb';
 
   // =========================================
   // State管理
