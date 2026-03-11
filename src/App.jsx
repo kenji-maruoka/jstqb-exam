@@ -550,7 +550,9 @@ const JSTQBExam = () => {
             >
               {selectedAnswers[currentQuestion] === correctAnswerIndex ? '✓ 正解' : 'ℹ 解説'}
             </p>
-            <p className="text-sm text-gray-700 mb-3">{question.explanation}</p>
+            <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap leading-relaxed">
+              {question.explanation}
+            </p>
             <p className="text-xs text-gray-600">
               {/* ★ 修正: 正解の位置を正しく計算して表示 ★ */}
               正解: <span className="font-bold">{String.fromCharCode(65 + correctPositionInDisplay)}</span>. {correctOptionText}
