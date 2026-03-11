@@ -85,12 +85,15 @@ const JSTQBExam = () => {
               }).filter(q => q !== null);
               break;
             }
-            // CSV形式の場合
+            // CSV形式の場合（改行コード対応版）
             else if (text.includes(',')) {
-              const lines = text.trim().split('\n');
+              // 改行コード統一（\r\n と \n を \n に統一）
+              const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+              const lines = normalizedText.trim().split('\n');
+              
               questions = lines.slice(1).map((line) => {
-                // CSV パース（簡易版）
-                const parts = line.split(',');
+                // CSV パース（ダブルクォート内のカンマを考慮）
+                const parts = parseCSVLine(line);
                 if (!parts[0]) return null;
 
                 return {
@@ -144,6 +147,46 @@ const JSTQBExam = () => {
   // =========================================
   // ユーティリティ関数
   // =========================================
+
+  // CSV パース関数（ダブルクォート内のカンマを正しく処理）
+  const parseCSVLine = (line) => {
+    const result = [];
+    let current = '';
+    let insideQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+
+      if (char === '"') {
+        if (insideQuotes && nextChar === '"') {
+          // エスケープされたクォート
+          current += '"';
+          i++; // 次の文字をスキップ
+        } else {
+          // クォートの開閉
+          insideQuotes = !insideQuotes;
+        }
+      } else if (char === ',' && !insideQuotes) {
+        // カンマで区切り
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+
+    // 最後の項目を追加
+    result.push(current.trim());
+
+    // ダブルクォートを削除
+    return result.map(item => {
+      if (item.startsWith('"') && item.endsWith('"')) {
+        return item.slice(1, -1);
+      }
+      return item;
+    });
+  };
 
   const shuffleArray = (array) => {
     const shuffled = [...array];
