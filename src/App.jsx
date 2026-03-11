@@ -89,12 +89,53 @@ const JSTQBExam = () => {
             else if (text.includes(',')) {
               // 改行コード統一（\r\n と \n を \n に統一）
               const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-              const lines = normalizedText.trim().split('\n');
               
-              questions = lines.slice(1).map((line) => {
-                // CSV パース（ダブルクォート内のカンマを考慮）
+              // ダブルクォート内の改行も考慮してCSVをパース
+              const lines = [];
+              let currentLine = '';
+              let insideQuotes = false;
+              
+              for (let i = 0; i < normalizedText.length; i++) {
+                const char = normalizedText[i];
+                const nextChar = normalizedText[i + 1];
+                
+                if (char === '"' && !insideQuotes) {
+                  insideQuotes = true;
+                  currentLine += char;
+                } else if (char === '"' && insideQuotes && nextChar === '"') {
+                  // エスケープされたクォート
+                  currentLine += '""';
+                  i++;
+                } else if (char === '"' && insideQuotes) {
+                  insideQuotes = false;
+                  currentLine += char;
+                } else if (char === '\n' && !insideQuotes) {
+                  // クォート外の改行 = 行の終わり
+                  if (currentLine.trim()) {
+                    lines.push(currentLine.trim());
+                  }
+                  currentLine = '';
+                } else {
+                  currentLine += char;
+                }
+              }
+              
+              // 最後の行を追加
+              if (currentLine.trim()) {
+                lines.push(currentLine.trim());
+              }
+              
+              console.log(`📊 取得したCSV行数: ${lines.length}`);
+              
+              // ヘッダー行（1行目）を除外してパース
+              questions = lines.slice(1).map((line, lineIndex) => {
                 const parts = parseCSVLine(line);
-                if (!parts[0]) return null;
+                
+                // 最低限の検証
+                if (!parts[0] || parts.length < 10) {
+                  console.warn(`⚠️ 行${lineIndex + 2}は無効です:`, line.substring(0, 100));
+                  return null;
+                }
 
                 return {
                   id: parseInt(parts[0]),
@@ -148,7 +189,7 @@ const JSTQBExam = () => {
   // ユーティリティ関数
   // =========================================
 
-  // CSV パース関数（ダブルクォート内のカンマを正しく処理）
+  // CSV パース関数（ダブルクォート内のカンマと改行を正しく処理）
   const parseCSVLine = (line) => {
     const result = [];
     let current = '';
@@ -168,7 +209,7 @@ const JSTQBExam = () => {
           insideQuotes = !insideQuotes;
         }
       } else if (char === ',' && !insideQuotes) {
-        // カンマで区切り
+        // カンマで区切り（クォート外のみ）
         result.push(current.trim());
         current = '';
       } else {
@@ -182,7 +223,7 @@ const JSTQBExam = () => {
     // ダブルクォートを削除
     return result.map(item => {
       if (item.startsWith('"') && item.endsWith('"')) {
-        return item.slice(1, -1);
+        return item.slice(1, -1).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       }
       return item;
     });
