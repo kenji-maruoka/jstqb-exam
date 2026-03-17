@@ -32,6 +32,8 @@ const JSTQBExam = () => {
     const fetchQuestions = async () => {
       try {
         console.log('📡 Google Sheets から問題データをフェッチしています...');
+        console.log(`🔑 使用中の Sheet ID: ${SHEET_ID}`);
+        console.log(`📄 使用中のシート名: ${SHEET_NAME}`);
 
         // CORS対応：複数のエンドポイントを試す
         const urls = [
@@ -132,9 +134,17 @@ const JSTQBExam = () => {
               questions = lines.slice(1).map((line, lineIndex) => {
                 const parts = parseCSVLine(line);
                 
-                // 最低限の検証
+                // 最低限の検証（カラム数をチェック）
                 if (!parts[0] || parts.length < 10) {
-                  console.warn(`⚠️ 行${lineIndex + 2}は無効です:`, line.substring(0, 100));
+                  console.warn(`⚠️ 行${lineIndex + 2}は無効です（カラム数: ${parts.length}）:`, line.substring(0, 100));
+                  console.warn('パース結果:', parts);
+                  return null;
+                }
+
+                // 選択肢の検証（空でないことを確認）
+                if (!parts[4] || !parts[5] || !parts[6] || !parts[7]) {
+                  console.warn(`⚠️ 行${lineIndex + 2}の選択肢が不完全です`);
+                  console.warn('options:', [parts[4], parts[5], parts[6], parts[7]]);
                   return null;
                 }
 
