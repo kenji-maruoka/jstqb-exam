@@ -29,12 +29,6 @@ const JSTQBExam = () => {
   // Google Sheets API からデータを取得
   // =========================================
   useEffect(() => {
-    // PapaParse ライブラリをロード
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.4.1/papaparse.min.js';
-    script.async = true;
-    document.head.appendChild(script);
-
     const fetchQuestions = async () => {
       try {
         console.log('📡 Google Sheets から問題データをフェッチしています...');
@@ -96,72 +90,94 @@ const JSTQBExam = () => {
             }
             // CSV形式の場合
             else if (text.includes(',')) {
-              // PapaParse がロード完了を待つ
-              const waitForPapaParse = () => {
-                return new Promise((resolve) => {
-                  if (window.Papa) {
-                    resolve();
+              // シンプルな改行対応CSVパーサー
+              const parseCSVWithNewlines = (csv) => {
+                const rows = [];
+                let row = [];
+                let field = '';
+                let insideQuotes = false;
+
+                for (let i = 0; i < csv.length; i++) {
+                  const char = csv[i];
+                  const nextChar = csv[i + 1];
+
+                  if (char === '"') {
+                    if (insideQuotes && nextChar === '"') {
+                      // エスケープされたダブルクォート
+                      field += '"';
+                      i++;
+                    } else {
+                      // クォートのオン/オフ
+                      insideQuotes = !insideQuotes;
+                    }
+                  } else if (char === ',' && !insideQuotes) {
+                    // カンマで区切り（クォート外のみ）
+                    row.push(field);
+                    field = '';
+                  } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+                    // 改行で行終了（クォート外のみ）
+                    if (field.trim() || row.length > 0) {
+                      row.push(field);
+                      rows.push(row);
+                      row = [];
+                      field = '';
+                    }
+                    // \r\n 対応
+                    if (char === '\r' && nextChar === '\n') {
+                      i++;
+                    }
                   } else {
-                    const checkInterval = setInterval(() => {
-                      if (window.Papa) {
-                        clearInterval(checkInterval);
-                        resolve();
-                      }
-                    }, 100);
+                    field += char;
                   }
-                });
+                }
+
+                // 最後のフィールドと行を追加
+                if (field.trim() || row.length > 0) {
+                  row.push(field);
+                  rows.push(row);
+                }
+
+                return rows;
               };
 
-              await waitForPapaParse();
+              const rows = parseCSVWithNewlines(text);
+              console.log(`📊 取得したCSV行数: ${rows.length}`);
 
-              try {
-                const parsed = window.Papa.parse(text, {
-                  header: false,
-                  skipEmptyLines: true,
-                  dynamicTyping: false,
-                  encoding: 'UTF-8'
+              // ヘッダー行を除外
+              questions = rows.slice(1).map((row) => {
+                // ダブルクォートを削除してクリーンアップ
+                const parts = row.map(cell => {
+                  let s = cell.trim();
+                  // ダブルクォートで囲まれている場合は削除
+                  if (s.startsWith('"') && s.endsWith('"')) {
+                    s = s.slice(1, -1);
+                  }
+                  // エスケープされたダブルクォートを戻す
+                  s = s.replace(/""/g, '"');
+                  return s;
                 });
 
-                const rows = parsed.data;
-                console.log(`📊 取得したCSV行数: ${rows.length}`);
+                if (!parts[0] || parts.length < 10) {
+                  return null;
+                }
 
-                // ヘッダー行を除外してパース
-                questions = rows.slice(1).map((row) => {
-                  // ダブルクォートを削除
-                  const parts = row.map((cell) => {
-                    if (!cell) return '';
-                    let s = cell.trim();
-                    if (s.startsWith('"') && s.endsWith('"')) {
-                      s = s.slice(1, -1);
-                    }
-                    return s;
-                  });
+                return {
+                  id: parseInt(parts[0]),
+                  category: parts[1] || '',
+                  chapter: parts[2] || '',
+                  question: parts[3] || '',
+                  options: [
+                    parts[4] || '',
+                    parts[5] || '',
+                    parts[6] || '',
+                    parts[7] || ''
+                  ],
+                  correct: parseInt(parts[8]) || 0,
+                  explanation: parts[9] || ''
+                };
+              }).filter(q => q !== null);
 
-                  if (!parts[0] || parts.length < 10) {
-                    return null;
-                  }
-
-                  return {
-                    id: parseInt(parts[0]),
-                    category: parts[1] || '',
-                    chapter: parts[2] || '',
-                    question: parts[3] || '',
-                    options: [
-                      parts[4] || '',
-                      parts[5] || '',
-                      parts[6] || '',
-                      parts[7] || ''
-                    ],
-                    correct: parseInt(parts[8]) || 0,
-                    explanation: parts[9] || ''
-                  };
-                }).filter(q => q !== null);
-
-                console.log(`✅ ${questions.length}問のデータを取得しました`);
-              } catch (err) {
-                console.error('PapaParse エラー:', err);
-                throw new Error('CSVパースエラーが発生しました');
-              }
+              console.log(`✅ ${questions.length}問のデータを取得しました`);
               break;
             }
           } catch (err) {
