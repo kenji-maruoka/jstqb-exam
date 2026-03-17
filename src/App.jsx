@@ -23,6 +23,7 @@ const JSTQBExam = () => {
   const [optionsMap, setOptionsMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [usedQuestionIds, setUsedQuestionIds] = useState(new Set());
 
   // =========================================
   // Google Sheets API からデータを取得
@@ -245,11 +246,32 @@ const JSTQBExam = () => {
   const handleStartQuiz = () => {
     if (questions.length === 0) return;
 
-    const selected = shuffleArray(questions).slice(0, 50);
-    setShuffledQuestions(selected);
+    // 使用済みでない問題のみをフィルタリング
+    const availableQuestions = questions.filter(q => !usedQuestionIds.has(q.id));
+
+    // 利用可能な問題が50問未満の場合の処理
+    if (availableQuestions.length < 50) {
+      alert(`利用可能な問題が${availableQuestions.length}問です。\n新しい出題セットを始めるため、使用済み問題の記録をリセットします。`);
+      // 使用済み記録をリセット
+      setUsedQuestionIds(new Set());
+      // リセット後に再度フィルタリング
+      const selected = shuffleArray(questions).slice(0, 50);
+      setShuffledQuestions(selected);
+      // 今回選択した問題のIDを記録
+      const newUsedIds = new Set(selected.map(q => q.id));
+      setUsedQuestionIds(newUsedIds);
+    } else {
+      // 利用可能な問題から50問をランダムに選択
+      const selected = shuffleArray(availableQuestions).slice(0, 50);
+      setShuffledQuestions(selected);
+      // 今回選択した問題のIDを記録（既存の使用済み記録に追加）
+      const newUsedIds = new Set(usedQuestionIds);
+      selected.forEach(q => newUsedIds.add(q.id));
+      setUsedQuestionIds(newUsedIds);
+    }
 
     const optionsMappings = {};
-    selected.forEach((q, idx) => {
+    shuffledQuestions.forEach((q, idx) => {
       const shuffledOptions = shuffleArray(
         q.options.map((text, originalIdx) => ({ text, originalIdx }))
       );
@@ -361,6 +383,28 @@ const JSTQBExam = () => {
           <p className="text-gray-600 mb-6">
             {questions.length}問の高度なテスト管理問題から、毎回ランダムに50問が出題されます
           </p>
+
+          {usedQuestionIds.size > 0 && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 text-left text-sm text-gray-700">
+              <p className="font-semibold mb-1">📊 進捗状況：</p>
+              <p className="text-xs">
+                使用済み問題：{usedQuestionIds.size}問 / 全{questions.length}問
+              </p>
+              <p className="text-xs text-amber-600 mt-2">
+                ⚠️ 利用可能な新規問題：{questions.length - usedQuestionIds.size}問
+              </p>
+              <button
+                onClick={() => {
+                  if (confirm('使用済み問題の記録をリセットして、最初からやり直しますか？')) {
+                    setUsedQuestionIds(new Set());
+                  }
+                }}
+                className="mt-3 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded transition-colors"
+              >
+                リセット
+              </button>
+            </div>
+          )}
 
           <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 text-left text-sm text-gray-700">
             <p className="font-semibold mb-2">📋 特徴：</p>
