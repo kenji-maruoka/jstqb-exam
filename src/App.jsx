@@ -313,8 +313,21 @@ const JSTQBExam = () => {
 
   const handleNext = () => {
     if (currentQuestion < shuffledQuestions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1);
+      const nextQuestion = currentQuestion + 1;
+      setCurrentQuestion(nextQuestion);
       setShowExplanation(false);
+      
+      // 次の問題のオプションマップが存在することを確認
+      if (!optionsMap[nextQuestion] && shuffledQuestions[nextQuestion]) {
+        console.warn(`optionsMap[${nextQuestion}] が存在しません。再生成します。`);
+        const q = shuffledQuestions[nextQuestion];
+        const newOptionMap = { ...optionsMap };
+        const shuffledOptions = shuffleArray(
+          q.options.map((text, originalIdx) => ({ text, originalIdx }))
+        );
+        newOptionMap[nextQuestion] = shuffledOptions;
+        setOptionsMap(newOptionMap);
+      }
     }
   };
 
@@ -557,7 +570,7 @@ const JSTQBExam = () => {
         <div className="space-y-3 mb-6">
           {displayOptions.map((option, index) => (
             <button
-              key={index}
+              key={`${currentQuestion}-${index}`}
               onClick={() => handleAnswerSelect(index)}
               disabled={selectedAnswers[currentQuestion] !== undefined}
               className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
