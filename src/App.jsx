@@ -178,6 +178,18 @@ const JSTQBExam = () => {
               }).filter(q => q !== null);
 
               console.log(`✅ ${questions.length}問のデータを取得しました`);
+              
+              // デバッグ：最初の問題のデータ構造を確認
+              if (questions.length > 0) {
+                console.log('【最初の問題データ】');
+                console.log('ID:', questions[0].id);
+                console.log('Category:', questions[0].category);
+                console.log('Chapter:', questions[0].chapter);
+                console.log('Question:', questions[0].question?.substring(0, 50));
+                console.log('Options:', questions[0].options);
+                console.log('Correct:', questions[0].correct);
+                console.log('Explanation:', questions[0].explanation?.substring(0, 50));
+              }
               break;
             }
           } catch (err) {
