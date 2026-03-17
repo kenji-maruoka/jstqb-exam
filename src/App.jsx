@@ -247,36 +247,39 @@ const JSTQBExam = () => {
     // 使用済みでない問題のみをフィルタリング
     const availableQuestions = questions.filter(q => !usedQuestionIds.has(q.id));
 
+    let selected;
+    
     // 利用可能な問題が50問未満の場合の処理
     if (availableQuestions.length < 50) {
       alert(`利用可能な問題が${availableQuestions.length}問です。\n新しい出題セットを始めるため、使用済み問題の記録をリセットします。`);
       // 使用済み記録をリセット
       setUsedQuestionIds(new Set());
       // リセット後に再度フィルタリング
-      const selected = shuffleArray(questions).slice(0, 50);
-      setShuffledQuestions(selected);
+      selected = shuffleArray(questions).slice(0, 50);
       // 今回選択した問題のIDを記録
       const newUsedIds = new Set(selected.map(q => q.id));
       setUsedQuestionIds(newUsedIds);
     } else {
       // 利用可能な問題から50問をランダムに選択
-      const selected = shuffleArray(availableQuestions).slice(0, 50);
-      setShuffledQuestions(selected);
+      selected = shuffleArray(availableQuestions).slice(0, 50);
       // 今回選択した問題のIDを記録（既存の使用済み記録に追加）
       const newUsedIds = new Set(usedQuestionIds);
       selected.forEach(q => newUsedIds.add(q.id));
       setUsedQuestionIds(newUsedIds);
     }
 
+    // selected を使用して optionsMappings を生成（State更新前に実行）
     const optionsMappings = {};
-    shuffledQuestions.forEach((q, idx) => {
+    selected.forEach((q, idx) => {
       const shuffledOptions = shuffleArray(
         q.options.map((text, originalIdx) => ({ text, originalIdx }))
       );
       optionsMappings[idx] = shuffledOptions;
     });
-    setOptionsMap(optionsMappings);
 
+    // State を一度に更新
+    setShuffledQuestions(selected);
+    setOptionsMap(optionsMappings);
     setQuizStarted(true);
     setCurrentQuestion(0);
     setSelectedAnswers({});
