@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import buildInfo from '../build-info.json';
 
+// PapaParse を動的にロード
+declare global {
+  interface Window {
+    Papa: any;
+  }
+}
+
 const JSTQBExam = () => {
   // =========================================
   // ★重要★ Google Sheets ID を設定
@@ -90,60 +97,65 @@ const JSTQBExam = () => {
             }
             // CSV形式の場合
             else if (text.includes(',')) {
-              const lines = text.trim().split('\n');
-              questions = lines.slice(1).map((line) => {
-                // CSV パース（ダブルクォート処理）
-                const parts = [];
-                let current = '';
-                let insideQuotes = false;
+              // PapaParse を動的にロード
+              const script = document.createElement('script');
+              script.src = 'https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.4.1/papaparse.min.js';
+              script.onload = () => {
+                try {
+                  const parsed = window.Papa.parse(text, {
+                    header: false,
+                    skipEmptyLines: true,
+                    dynamicTyping: false,
+                    encoding: 'UTF-8'
+                  });
 
-                for (let i = 0; i < line.length; i++) {
-                  const char = line[i];
-                  const nextChar = line[i + 1];
+                  const rows = parsed.data;
+                  console.log(`📊 取得したCSV行数: ${rows.length}`);
 
-                  if (char === '"') {
-                    if (insideQuotes && nextChar === '"') {
-                      current += '"';
-                      i++;
-                    } else {
-                      insideQuotes = !insideQuotes;
+                  // ヘッダー行を除外してパース
+                  questions = rows.slice(1).map((row) => {
+                    // ダブルクォートを削除
+                    const parts = row.map((cell) => {
+                      if (!cell) return '';
+                      let s = cell.trim();
+                      if (s.startsWith('"') && s.endsWith('"')) {
+                        s = s.slice(1, -1);
+                      }
+                      return s;
+                    });
+
+                    if (!parts[0] || parts.length < 10) {
+                      return null;
                     }
-                  } else if (char === ',' && !insideQuotes) {
-                    parts.push(current);
-                    current = '';
-                  } else {
-                    current += char;
-                  }
+
+                    return {
+                      id: parseInt(parts[0]),
+                      category: parts[1] || '',
+                      chapter: parts[2] || '',
+                      question: parts[3] || '',
+                      options: [
+                        parts[4] || '',
+                        parts[5] || '',
+                        parts[6] || '',
+                        parts[7] || ''
+                      ],
+                      correct: parseInt(parts[8]) || 0,
+                      explanation: parts[9] || ''
+                    };
+                  }).filter(q => q !== null);
+
+                  setQuestions(questions);
+                  setLoading(false);
+                  console.log(`✅ ${questions.length}問のデータを取得しました`);
+                } catch (err) {
+                  console.error('PapaParse エラー:', err);
+                  setError('CSVパースエラーが発生しました');
+                  setLoading(false);
                 }
-                parts.push(current);
-
-                // ダブルクォートを削除
-                const cleanParts = parts.map(p => {
-                  let s = p.trim();
-                  if (s.startsWith('"') && s.endsWith('"')) {
-                    s = s.slice(1, -1);
-                  }
-                  return s;
-                });
-
-                if (!cleanParts[0]) return null;
-
-                return {
-                  id: parseInt(cleanParts[0]),
-                  category: cleanParts[1] || '',
-                  chapter: cleanParts[2] || '',
-                  question: cleanParts[3] || '',
-                  options: [
-                    cleanParts[4] || '',
-                    cleanParts[5] || '',
-                    cleanParts[6] || '',
-                    cleanParts[7] || ''
-                  ],
-                  correct: parseInt(cleanParts[8]) || 0,
-                  explanation: cleanParts[9] || ''
-                };
-              }).filter(q => q !== null);
-              break;
+              };
+              document.head.appendChild(script);
+              return;
+            }
             }
           } catch (err) {
             lastError = err;
