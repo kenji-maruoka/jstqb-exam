@@ -88,79 +88,59 @@ const JSTQBExam = () => {
               }).filter(q => q !== null);
               break;
             }
-            // CSV形式の場合（改行コード対応版）
+            // CSV形式の場合
             else if (text.includes(',')) {
-              // 改行コード統一（\r\n と \n を \n に統一）
-              const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-              
-              // ダブルクォート内の改行も考慮してCSVをパース
-              const lines = [];
-              let currentLine = '';
-              let insideQuotes = false;
-              
-              for (let i = 0; i < normalizedText.length; i++) {
-                const char = normalizedText[i];
-                const nextChar = normalizedText[i + 1];
-                
-                if (char === '"' && !insideQuotes) {
-                  insideQuotes = true;
-                  currentLine += char;
-                } else if (char === '"' && insideQuotes && nextChar === '"') {
-                  // エスケープされたクォート
-                  currentLine += '""';
-                  i++;
-                } else if (char === '"' && insideQuotes) {
-                  insideQuotes = false;
-                  currentLine += char;
-                } else if (char === '\n' && !insideQuotes) {
-                  // クォート外の改行 = 行の終わり
-                  if (currentLine.trim()) {
-                    lines.push(currentLine.trim());
-                  }
-                  currentLine = '';
-                } else {
-                  currentLine += char;
-                }
-              }
-              
-              // 最後の行を追加
-              if (currentLine.trim()) {
-                lines.push(currentLine.trim());
-              }
-              
-              console.log(`📊 取得したCSV行数: ${lines.length}`);
-              
-              // ヘッダー行（1行目）を除外してパース
-              questions = lines.slice(1).map((line, lineIndex) => {
-                const parts = parseCSVLine(line);
-                
-                // 最低限の検証（カラム数をチェック）
-                if (!parts[0] || parts.length < 10) {
-                  console.warn(`⚠️ 行${lineIndex + 2}は無効です（カラム数: ${parts.length}）:`, line.substring(0, 100));
-                  console.warn('パース結果:', parts);
-                  return null;
-                }
+              const lines = text.trim().split('\n');
+              questions = lines.slice(1).map((line) => {
+                // CSV パース（ダブルクォート処理）
+                const parts = [];
+                let current = '';
+                let insideQuotes = false;
 
-                // 選択肢の検証（空でないことを確認）
-                if (!parts[4] || !parts[5] || !parts[6] || !parts[7]) {
-                  console.warn(`⚠️ 行${lineIndex + 2}の選択肢が不完全です`);
-                  console.warn('options:', [parts[4], parts[5], parts[6], parts[7]]);
-                  return null;
+                for (let i = 0; i < line.length; i++) {
+                  const char = line[i];
+                  const nextChar = line[i + 1];
+
+                  if (char === '"') {
+                    if (insideQuotes && nextChar === '"') {
+                      current += '"';
+                      i++;
+                    } else {
+                      insideQuotes = !insideQuotes;
+                    }
+                  } else if (char === ',' && !insideQuotes) {
+                    parts.push(current);
+                    current = '';
+                  } else {
+                    current += char;
+                  }
                 }
+                parts.push(current);
+
+                // ダブルクォートを削除
+                const cleanParts = parts.map(p => {
+                  let s = p.trim();
+                  if (s.startsWith('"') && s.endsWith('"')) {
+                    s = s.slice(1, -1);
+                  }
+                  return s;
+                });
+
+                if (!cleanParts[0]) return null;
 
                 return {
-                  id: parseInt(parts[0]),
-                  category: parts[1] || '',
-                  chapter: parts[2] || '',
-                  question: parts[3] || '',
+                  id: parseInt(cleanParts[0]),
+                  category: cleanParts[1] || '',
+                  chapter: cleanParts[2] || '',
+                  question: cleanParts[3] || '',
                   options: [
-                    parts[4] || '',
-                    parts[5] || '',
-                    parts[6] || '',
-                    parts[7] || ''
+                    cleanParts[4] || '',
+                    cleanParts[5] || '',
+                    cleanParts[6] || '',
+                    cleanParts[7] || ''
                   ],
-                  correct: parseInt(parts[8]) || 0,
-                  explanation: parts[9] || ''
+                  correct: parseInt(cleanParts[8]) || 0,
+                  explanation: cleanParts[9] || ''
                 };
               }).filter(q => q !== null);
               break;
@@ -201,45 +181,6 @@ const JSTQBExam = () => {
   // =========================================
 
   // CSV パース関数（ダブルクォート内のカンマと改行を正しく処理）
-  const parseCSVLine = (line) => {
-    const result = [];
-    let current = '';
-    let insideQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      const nextChar = line[i + 1];
-
-      if (char === '"') {
-        if (insideQuotes && nextChar === '"') {
-          // エスケープされたクォート
-          current += '"';
-          i++; // 次の文字をスキップ
-        } else {
-          // クォートの開閉
-          insideQuotes = !insideQuotes;
-        }
-      } else if (char === ',' && !insideQuotes) {
-        // カンマで区切り（クォート外のみ）
-        result.push(current.trim());
-        current = '';
-      } else {
-        current += char;
-      }
-    }
-
-    // 最後の項目を追加
-    result.push(current.trim());
-
-    // ダブルクォートを削除
-    return result.map(item => {
-      if (item.startsWith('"') && item.endsWith('"')) {
-        return item.slice(1, -1).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      }
-      return item;
-    });
-  };
-
   const shuffleArray = (array) => {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
