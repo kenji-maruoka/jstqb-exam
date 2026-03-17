@@ -312,26 +312,17 @@ const JSTQBExam = () => {
   };
 
   const handleNext = () => {
+    console.log(`[handleNext] currentQuestion: ${currentQuestion}, selectedAnswers[${currentQuestion}]: ${selectedAnswers[currentQuestion]}`);
     if (currentQuestion < shuffledQuestions.length - 1) {
       const nextQuestion = currentQuestion + 1;
+      console.log(`[handleNext] 次の問題: ${nextQuestion}, selectedAnswers[${nextQuestion}]: ${selectedAnswers[nextQuestion]}`);
       setCurrentQuestion(nextQuestion);
       setShowExplanation(false);
-      
-      // 次の問題のオプションマップが存在することを確認
-      if (!optionsMap[nextQuestion] && shuffledQuestions[nextQuestion]) {
-        console.warn(`optionsMap[${nextQuestion}] が存在しません。再生成します。`);
-        const q = shuffledQuestions[nextQuestion];
-        const newOptionMap = { ...optionsMap };
-        const shuffledOptions = shuffleArray(
-          q.options.map((text, originalIdx) => ({ text, originalIdx }))
-        );
-        newOptionMap[nextQuestion] = shuffledOptions;
-        setOptionsMap(newOptionMap);
-      }
     }
   };
 
   const handlePrev = () => {
+    console.log(`[handlePrev] currentQuestion: ${currentQuestion}, selectedAnswers: `, selectedAnswers);
     if (currentQuestion > 0) {
       setCurrentQuestion(currentQuestion - 1);
       setShowExplanation(selectedAnswers[currentQuestion - 1] !== undefined);
@@ -629,7 +620,7 @@ const JSTQBExam = () => {
           </button>
           <button
             onClick={handleNext}
-            disabled={!showExplanation || currentQuestion === questionList.length - 1}
+            disabled={currentQuestion === questionList.length - 1}
             className="flex-1 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-blue-600 font-bold py-3 px-4 rounded-lg border-2 border-white transition-colors flex items-center justify-center gap-2"
           >
             <span className="hidden sm:inline">次へ</span>
