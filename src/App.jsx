@@ -2,13 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import buildInfo from '../build-info.json';
 
-// PapaParse を動的にロード
-declare global {
-  interface Window {
-    Papa: any;
-  }
-}
-
 const JSTQBExam = () => {
   // =========================================
   // ★重要★ Google Sheets ID を設定
@@ -36,6 +29,12 @@ const JSTQBExam = () => {
   // Google Sheets API からデータを取得
   // =========================================
   useEffect(() => {
+    // PapaParse ライブラリをロード
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.4.1/papaparse.min.js';
+    script.async = true;
+    document.head.appendChild(script);
+
     const fetchQuestions = async () => {
       try {
         console.log('📡 Google Sheets から問題データをフェッチしています...');
@@ -97,65 +96,73 @@ const JSTQBExam = () => {
             }
             // CSV形式の場合
             else if (text.includes(',')) {
-              // PapaParse を動的にロード
-              const script = document.createElement('script');
-              script.src = 'https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.4.1/papaparse.min.js';
-              script.onload = () => {
-                try {
-                  const parsed = window.Papa.parse(text, {
-                    header: false,
-                    skipEmptyLines: true,
-                    dynamicTyping: false,
-                    encoding: 'UTF-8'
+              // PapaParse がロード完了を待つ
+              const waitForPapaParse = () => {
+                return new Promise((resolve) => {
+                  if (window.Papa) {
+                    resolve();
+                  } else {
+                    const checkInterval = setInterval(() => {
+                      if (window.Papa) {
+                        clearInterval(checkInterval);
+                        resolve();
+                      }
+                    }, 100);
+                  }
+                });
+              };
+
+              await waitForPapaParse();
+
+              try {
+                const parsed = window.Papa.parse(text, {
+                  header: false,
+                  skipEmptyLines: true,
+                  dynamicTyping: false,
+                  encoding: 'UTF-8'
+                });
+
+                const rows = parsed.data;
+                console.log(`📊 取得したCSV行数: ${rows.length}`);
+
+                // ヘッダー行を除外してパース
+                questions = rows.slice(1).map((row) => {
+                  // ダブルクォートを削除
+                  const parts = row.map((cell) => {
+                    if (!cell) return '';
+                    let s = cell.trim();
+                    if (s.startsWith('"') && s.endsWith('"')) {
+                      s = s.slice(1, -1);
+                    }
+                    return s;
                   });
 
-                  const rows = parsed.data;
-                  console.log(`📊 取得したCSV行数: ${rows.length}`);
+                  if (!parts[0] || parts.length < 10) {
+                    return null;
+                  }
 
-                  // ヘッダー行を除外してパース
-                  questions = rows.slice(1).map((row) => {
-                    // ダブルクォートを削除
-                    const parts = row.map((cell) => {
-                      if (!cell) return '';
-                      let s = cell.trim();
-                      if (s.startsWith('"') && s.endsWith('"')) {
-                        s = s.slice(1, -1);
-                      }
-                      return s;
-                    });
+                  return {
+                    id: parseInt(parts[0]),
+                    category: parts[1] || '',
+                    chapter: parts[2] || '',
+                    question: parts[3] || '',
+                    options: [
+                      parts[4] || '',
+                      parts[5] || '',
+                      parts[6] || '',
+                      parts[7] || ''
+                    ],
+                    correct: parseInt(parts[8]) || 0,
+                    explanation: parts[9] || ''
+                  };
+                }).filter(q => q !== null);
 
-                    if (!parts[0] || parts.length < 10) {
-                      return null;
-                    }
-
-                    return {
-                      id: parseInt(parts[0]),
-                      category: parts[1] || '',
-                      chapter: parts[2] || '',
-                      question: parts[3] || '',
-                      options: [
-                        parts[4] || '',
-                        parts[5] || '',
-                        parts[6] || '',
-                        parts[7] || ''
-                      ],
-                      correct: parseInt(parts[8]) || 0,
-                      explanation: parts[9] || ''
-                    };
-                  }).filter(q => q !== null);
-
-                  setQuestions(questions);
-                  setLoading(false);
-                  console.log(`✅ ${questions.length}問のデータを取得しました`);
-                } catch (err) {
-                  console.error('PapaParse エラー:', err);
-                  setError('CSVパースエラーが発生しました');
-                  setLoading(false);
-                }
-              };
-              document.head.appendChild(script);
-              return;
-            }
+                console.log(`✅ ${questions.length}問のデータを取得しました`);
+              } catch (err) {
+                console.error('PapaParse エラー:', err);
+                throw new Error('CSVパースエラーが発生しました');
+              }
+              break;
             }
           } catch (err) {
             lastError = err;
