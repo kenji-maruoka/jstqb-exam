@@ -24,6 +24,7 @@ const JSTQBExam = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [usedQuestionIds, setUsedQuestionIds] = useState(new Set());
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // =========================================
   // Google Sheets API からデータを取得
@@ -178,6 +179,18 @@ const JSTQBExam = () => {
               }).filter(q => q !== null);
 
               console.log(`✅ ${questions.length}問のデータを取得しました`);
+              
+              // 更新日時を現在の日時に設定
+              const now = new Date();
+              const formattedDate = now.toLocaleString('ja-JP', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              });
+              setLastUpdated(formattedDate);
               
               // デバッグ：最初の問題のデータ構造を確認
               if (questions.length > 0) {
@@ -422,6 +435,12 @@ const JSTQBExam = () => {
               <li>✓ 問題追加時にコードの変更は不要</li>
             </ul>
           </div>
+
+          {lastUpdated && (
+            <div className="bg-gray-50 border-l-4 border-gray-400 p-3 mb-6 text-center text-xs text-gray-600">
+              <p>📅 データ更新：<span className="font-semibold">{lastUpdated}</span></p>
+            </div>
+          )}
 
           <button
             onClick={handleStartQuiz}
