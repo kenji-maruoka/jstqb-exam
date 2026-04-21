@@ -73,7 +73,7 @@ const JSTQBExam = () => {
                 if (!cols[0] || !cols[0].v) return null;
 
                 return {
-                  id: parseInt(cols[0].v),
+                  id: String(cols[0].v),
                   category: String(cols[1].v || ''),
                   chapter: String(cols[2].v || ''),
                   question: String(cols[3].v || ''),
@@ -163,7 +163,7 @@ const JSTQBExam = () => {
                 }
 
                 return {
-                  id: parseInt(parts[0]),
+                  id: parts[0] || '',
                   category: parts[1] || '',
                   chapter: parts[2] || '',
                   question: parts[3] || '',
