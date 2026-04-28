@@ -26,6 +26,7 @@ const JSTQBExam = () => {
   const [usedQuestionIds, setUsedQuestionIds] = useState(new Set());
   const [lastUpdated, setLastUpdated] = useState(null);
   const [pendingAnswer, setPendingAnswer] = useState(null); // 仮選択（未確定）
+  const [sheetTitle, setSheetTitle] = useState('');
 
   // GAS WebアプリURL（スプレッドシートの最終更新日取得）
   const GAS_URL = '/api/last-updated';
@@ -72,6 +73,7 @@ const JSTQBExam = () => {
               const jsonString = text.substring(47).slice(0, -2);
               const jsonData = JSON.parse(jsonString);
 
+              // スプレッドシートのタイトルを取得（reqId前のtable.parsedNumHeadersやresponseHandler周辺には含まれないため別途取得）
               questions = jsonData.table.rows.map((row) => {
                 const cols = row.c;
                 if (!cols[0] || !cols[0].v) return null;
@@ -219,6 +221,25 @@ const JSTQBExam = () => {
 
         console.log(`✅ ${questions.length}問のデータを取得しました`);
         setQuestions(questions);
+
+        // スプレッドシートのタイトルを取得
+        try {
+          const titleRes = await fetch(
+            `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/query?tqx=out:json&tq=select%201%20limit%200`,
+            { method: 'GET', mode: 'cors' }
+          );
+          if (titleRes.ok) {
+            const titleText = await titleRes.text();
+            // gvizレスポンスの "docName" フィールドからタイトルを抽出
+            const docNameMatch = titleText.match(/"docName":\s*"([^"]+)"/);
+            if (docNameMatch) {
+              setSheetTitle(docNameMatch[1]);
+              console.log('📄 スプレッドシートタイトル:', docNameMatch[1]);
+            }
+          }
+        } catch (titleErr) {
+          console.log('⚠️ タイトル取得に失敗:', titleErr.message);
+        }
 
         // GASから最終更新日を取得
         try {
@@ -419,8 +440,10 @@ const JSTQBExam = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
-          <h1 className="text-3xl font-bold text-blue-600 mb-2">JSTQB Advanced Level</h1>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Test Management V3.0.J02</h2>
+          <h1 className="text-3xl font-bold text-blue-600 mb-2">{sheetTitle || 'JSTQB Advanced Level'}</h1>
+          {!sheetTitle && (
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Test Management V3.0.J02</h2>
+          )}
           <p className="text-gray-600 mb-6">
             {questions.length}問の高度なテスト管理問題から、毎回ランダムに50問が出題されます
           </p>
