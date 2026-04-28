@@ -27,7 +27,7 @@ const JSTQBExam = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
 
   // GAS WebアプリURL（スプレッドシートの最終更新日取得）
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbyZseKn9rTVgRD9rtt6c6ozQvIWQbaLWwcVaop-T1pakJXTM-LYMkgCMw1qeIahSFYVIw/exec';
+  const GAS_URL = '/api/last-updated';
 
   // =========================================
   // Google Sheets API からデータを取得
