@@ -407,14 +407,10 @@ const JSTQBExam = () => {
   // =========================================
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <h2 className="text-2xl font-bold text-blue-600 mb-2">データを読み込み中...</h2>
-          <p className="text-gray-600 mb-4">Google Sheets から問題データを取得しています</p>
-          <p className="text-xs text-gray-500">
-            このプロセスに数秒かかる場合があります
-          </p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-600 border-t-indigo-400 mx-auto mb-5"></div>
+          <p className="text-slate-400 text-sm tracking-widest uppercase">Loading</p>
         </div>
       </div>
     );
@@ -425,20 +421,15 @@ const JSTQBExam = () => {
   // =========================================
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-          <div className="bg-red-50 border-2 border-red-500 rounded-lg p-4 mb-4">
-            <h2 className="text-2xl font-bold text-red-600 mb-2">⚠️ エラーが発生しました</h2>
-            <p className="text-gray-700 text-sm whitespace-pre-wrap mb-4">{error}</p>
-          </div>
-
-          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded text-sm text-gray-700">
-            <p className="font-bold mb-2">【対応方法】</p>
-            <ol className="list-decimal list-inside space-y-1 text-xs">
-              <li>Google Sheet ID が正しいか確認</li>
-              <li>Google Sheet が公開されているか確認</li>
-              <li>シート名が「questions」か確認</li>
-            </ol>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
+          <p className="text-red-400 text-xs tracking-widest uppercase mb-3">Error</p>
+          <h2 className="text-xl font-semibold text-white mb-4">データの取得に失敗しました</h2>
+          <p className="text-slate-400 text-sm whitespace-pre-wrap mb-6 leading-relaxed">{error}</p>
+          <div className="border-t border-slate-700 pt-4 space-y-1 text-xs text-slate-500">
+            <p>・Google Sheet ID が正しいか確認</p>
+            <p>・スプレッドシートが公開設定になっているか確認</p>
+            <p>・シート名が「questions」か確認</p>
           </div>
         </div>
       </div>
@@ -450,58 +441,76 @@ const JSTQBExam = () => {
   // =========================================
   if (!quizStarted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
-          <h1 className="text-3xl font-bold text-blue-600 mb-2">{sheetTitle || 'JSTQB Advanced Level'}</h1>
-          {!sheetTitle && (
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Test Management V3.0.J02</h2>
-          )}
-          <p className="text-gray-600 mb-6">
-            {questions.length}問の高度なテスト管理問題から、毎回ランダムに50問が出題されます
-          </p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full">
+          {/* タイトルエリア */}
+          <div className="text-center mb-10">
+            <p className="text-indigo-400 text-xs tracking-widest uppercase mb-4">Exam Simulator</p>
+            <h1 className="text-3xl font-bold text-white leading-tight mb-2">
+              {sheetTitle || 'JSTQB Advanced Level'}
+            </h1>
+            <p className="text-slate-400 text-sm">{SHEET_NAME}</p>
+          </div>
 
+          {/* 問題数バッジ */}
+          <div className="flex justify-center gap-6 mb-10">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{questions.length}</p>
+              <p className="text-slate-500 text-xs mt-1">総問題数</p>
+            </div>
+            <div className="w-px bg-slate-700"></div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">50</p>
+              <p className="text-slate-500 text-xs mt-1">出題数</p>
+            </div>
+            <div className="w-px bg-slate-700"></div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-white">{questions.length - usedQuestionIds.size}</p>
+              <p className="text-slate-500 text-xs mt-1">未出題</p>
+            </div>
+          </div>
+
+          {/* 進捗バー */}
           {usedQuestionIds.size > 0 && (
-            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 text-left text-sm text-gray-700">
-              <p className="font-semibold mb-1">📊 進捗状況：</p>
-              <p className="text-xs">
-                使用済み問題：{usedQuestionIds.size}問 / 全{questions.length}問
-              </p>
-              <p className="text-xs text-amber-600 mt-2">
-                ⚠️ 利用可能な新規問題：{questions.length - usedQuestionIds.size}問
-              </p>
+            <div className="mb-8">
+              <div className="flex justify-between text-xs text-slate-500 mb-2">
+                <span>進捗</span>
+                <span>{usedQuestionIds.size} / {questions.length}</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-1">
+                <div
+                  className="bg-indigo-500 h-1 rounded-full transition-all"
+                  style={{ width: `${(usedQuestionIds.size / questions.length) * 100}%` }}
+                ></div>
+              </div>
               <button
                 onClick={() => {
                   if (confirm('使用済み問題の記録をリセットして、最初からやり直しますか？')) {
                     setUsedQuestionIds(new Set());
                   }
                 }}
-                className="mt-3 px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs rounded transition-colors"
+                className="mt-3 text-xs text-slate-500 hover:text-slate-300 transition-colors underline underline-offset-2"
               >
-                リセット
+                進捗をリセット
               </button>
             </div>
           )}
 
+          {/* 開始ボタン */}
           <button
             onClick={handleStartQuiz}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 tracking-wide"
           >
             模試を開始
           </button>
 
-          {lastUpdated && (
-            <div className="bg-gray-50 border-l-4 border-gray-400 p-3 mb-2 text-center text-xs text-gray-600">
-              <p>📅 データ最終更新：<span className="font-semibold">{lastUpdated}</span></p>
-            </div>
-          )}
-
-          <p className="text-xs text-gray-500 mt-4">
-            データソース: Google Sheets（リアルタイム更新）
-          </p>
-
-          <p className="text-xs text-gray-400 mt-2 pt-2 border-t">
-            最終デプロイ: {buildInfo.buildDate}
-          </p>
+          {/* フッター */}
+          <div className="mt-8 text-center space-y-1">
+            {lastUpdated && (
+              <p className="text-slate-600 text-xs">最終更新: {lastUpdated}</p>
+            )}
+            <p className="text-slate-700 text-xs">Build: {buildInfo.buildDate}</p>
+          </div>
         </div>
       </div>
     );
@@ -528,34 +537,29 @@ const JSTQBExam = () => {
     });
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 py-8">
-        <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-3xl font-bold text-center mb-8 text-blue-600">テスト結果</h2>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 py-10">
+        <div className="max-w-2xl mx-auto">
+          <p className="text-indigo-400 text-xs tracking-widest uppercase text-center mb-8">Result</p>
 
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-6 mb-8">
-            <div className="text-center mb-6">
-              <p className="text-lg text-gray-700 mb-2">総合スコア</p>
-              <p className="text-5xl font-bold text-blue-600">{correctCount}/{questionList.length}</p>
-              <p className="text-xl text-gray-600 mt-2">
-                正答率：<span className="font-bold">{Math.round((correctCount / questionList.length) * 100)}%</span>
-              </p>
-            </div>
+          {/* スコア */}
+          <div className="text-center mb-10">
+            <p className="text-8xl font-bold text-white mb-2">{Math.round((correctCount / questionList.length) * 100)}<span className="text-3xl text-slate-500">%</span></p>
+            <p className="text-slate-400 text-sm">{correctCount} / {questionList.length} 問正解</p>
           </div>
 
-          <div className="mb-8">
-            <h3 className="text-xl font-semibold text-gray-800 mb-4">分野別成績</h3>
-            <div className="space-y-3">
+          {/* 分野別成績 */}
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-6">
+            <p className="text-slate-400 text-xs tracking-widest uppercase mb-5">分野別成績</p>
+            <div className="space-y-4">
               {Object.entries(categoryStats).map(([category, stats]) => (
                 <div key={category}>
-                  <div className="flex justify-between mb-1">
-                    <span className="text-sm font-semibold text-gray-700">{category}</span>
-                    <span className="text-sm font-bold text-blue-600">
-                      {stats.correct}/{stats.total}
-                    </span>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-slate-300">{category}</span>
+                    <span className="text-sm text-slate-400">{stats.correct}/{stats.total}</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-slate-700 rounded-full h-1">
                     <div
-                      className="bg-blue-600 h-2 rounded-full transition-all"
+                      className="bg-indigo-500 h-1 rounded-full transition-all"
                       style={{ width: `${(stats.correct / stats.total) * 100}%` }}
                     ></div>
                   </div>
@@ -566,9 +570,9 @@ const JSTQBExam = () => {
 
           <button
             onClick={handleReset}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 flex items-center justify-center gap-2 tracking-wide"
           >
-            <RotateCcw size={20} />
+            <RotateCcw size={16} />
             もう一度チャレンジ
           </button>
         </div>
@@ -599,118 +603,131 @@ const JSTQBExam = () => {
   const correctOptionText = mappedOptions[correctPositionInDisplay]?.text || '';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 py-8">
-      <div className="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl p-6">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 py-8">
+      <div className="max-w-3xl mx-auto">
+        {/* ヘッダー */}
         <div className="mb-6">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-semibold text-blue-600">
-              問題 {currentQuestion + 1}/{questionList.length}
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-indigo-400 text-sm font-medium">
+              {currentQuestion + 1} <span className="text-slate-600">/ {questionList.length}</span>
             </span>
-            {/* ★ 修正: 問題IDを追加表示 ★ */}
-            <span className="text-xs text-gray-500">
-              ID: {question.id} | {question.category} - {question.chapter}
+            <span className="text-xs text-slate-600">
+              {question.category} · {question.chapter}
             </span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full bg-slate-700 rounded-full h-0.5">
             <div
-              className="bg-blue-600 h-2 rounded-full transition-all"
+              className="bg-indigo-500 h-0.5 rounded-full transition-all duration-300"
               style={{ width: `${((currentQuestion + 1) / questionList.length) * 100}%` }}
             ></div>
           </div>
         </div>
 
-        <h2 className="text-lg font-bold text-gray-800 mb-6 leading-relaxed whitespace-pre-wrap">
-          {question.question}
-        </h2>
+        {/* 問題カード */}
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-4">
+          <p className="text-xs text-slate-500 mb-4">ID: {question.id}</p>
+          <p className="text-white text-base leading-relaxed whitespace-pre-wrap font-medium">
+            {question.question}
+          </p>
+        </div>
 
-        <div className="space-y-3 mb-4">
+        {/* 選択肢 */}
+        <div className="space-y-2 mb-4">
           {displayOptions.map((option, index) => (
             <button
               key={`${currentQuestion}-${index}`}
               onClick={() => handleAnswerSelect(index)}
               disabled={selectedAnswers[currentQuestion] !== undefined}
-              className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+              className={`w-full text-left p-4 rounded-xl border transition-all ${
                 selectedAnswers[currentQuestion] !== undefined
                   ? mappedOptions[index].originalIdx === correctAnswerIndex
-                    ? 'border-green-500 bg-green-50'
+                    ? 'border-emerald-500 bg-emerald-900/30 text-emerald-300'
                     : selectedAnswers[currentQuestion] === mappedOptions[index].originalIdx
-                    ? 'border-red-500 bg-red-50'
-                    : 'border-gray-200 bg-gray-50'
+                    ? 'border-red-500 bg-red-900/30 text-red-300'
+                    : 'border-slate-700 bg-slate-800/50 text-slate-500'
                   : pendingAnswer === index
-                  ? 'border-blue-500 bg-blue-50 cursor-pointer'
-                  : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'
+                  ? 'border-indigo-500 bg-indigo-900/40 text-white cursor-pointer'
+                  : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500 hover:text-white cursor-pointer'
               }`}
             >
               <div className="flex items-start gap-3">
-                <span className="font-bold text-lg text-gray-600 mt-0.5">
-                  {String.fromCharCode(65 + index)}.
+                <span className={`text-xs font-bold mt-0.5 w-5 shrink-0 ${
+                  selectedAnswers[currentQuestion] !== undefined
+                    ? mappedOptions[index].originalIdx === correctAnswerIndex
+                      ? 'text-emerald-400'
+                      : selectedAnswers[currentQuestion] === mappedOptions[index].originalIdx
+                      ? 'text-red-400'
+                      : 'text-slate-600'
+                    : pendingAnswer === index
+                    ? 'text-indigo-400'
+                    : 'text-slate-500'
+                }`}>
+                  {String.fromCharCode(65 + index)}
                 </span>
-                <span className="text-gray-700">{option}</span>
+                <span className="text-sm leading-relaxed">{option}</span>
               </div>
             </button>
           ))}
         </div>
 
+        {/* 回答ボタン */}
         {selectedAnswers[currentQuestion] === undefined && (
           <div className="mb-4">
             <button
               onClick={handleConfirmAnswer}
               disabled={pendingAnswer === null}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-colors"
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold py-3.5 px-6 rounded-xl transition-all tracking-wide text-sm"
             >
               回答する
             </button>
           </div>
         )}
 
+        {/* 解説 */}
         {showExplanation && (
-          <div
-            className={`mt-6 p-4 rounded-lg ${
-              selectedAnswers[currentQuestion] === correctAnswerIndex
-                ? 'bg-green-50 border-l-4 border-green-500'
-                : 'bg-blue-50 border-l-4 border-blue-500'
-            }`}
-          >
-            <p
-              className={`text-sm font-semibold ${
-                selectedAnswers[currentQuestion] === correctAnswerIndex ? 'text-green-800' : 'text-blue-800'
-              } mb-2`}
-            >
-              {selectedAnswers[currentQuestion] === correctAnswerIndex ? '✓ 正解' : 'ℹ 解説'}
+          <div className={`rounded-xl p-5 mb-4 border ${
+            selectedAnswers[currentQuestion] === correctAnswerIndex
+              ? 'bg-emerald-900/20 border-emerald-800'
+              : 'bg-slate-800 border-slate-700'
+          }`}>
+            <p className={`text-xs font-semibold tracking-widest uppercase mb-3 ${
+              selectedAnswers[currentQuestion] === correctAnswerIndex ? 'text-emerald-400' : 'text-indigo-400'
+            }`}>
+              {selectedAnswers[currentQuestion] === correctAnswerIndex ? '✓ Correct' : 'Answer'}
             </p>
-            <p className="text-sm text-gray-700 mb-3 whitespace-pre-wrap leading-relaxed">
+            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap mb-3">
               {question.explanation}
             </p>
-            <p className="text-xs text-gray-600">
-              {/* ★ 修正: 正解の位置を正しく計算して表示 ★ */}
-              正解: <span className="font-bold">{String.fromCharCode(65 + correctPositionInDisplay)}</span>. {correctOptionText}
+            <p className="text-xs text-slate-500">
+              正解: <span className="text-slate-300 font-medium">{String.fromCharCode(65 + correctPositionInDisplay)}. {correctOptionText}</span>
             </p>
           </div>
         )}
 
-        <div className="flex gap-2 mb-4 mt-6">
+        {/* ナビゲーション */}
+        <div className="flex gap-2 mb-3">
           <button
             onClick={handlePrev}
             disabled={currentQuestion === 0}
-            className="flex-1 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-blue-600 font-bold py-3 px-4 rounded-lg border-2 border-white transition-colors flex items-center justify-center gap-2"
+            className="flex-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 font-medium py-3 px-4 rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2 text-sm"
           >
-            <ChevronLeft size={18} />
+            <ChevronLeft size={16} />
             <span className="hidden sm:inline">前へ</span>
           </button>
           <button
             onClick={handleNext}
             disabled={currentQuestion === questionList.length - 1}
-            className="flex-1 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-blue-600 font-bold py-3 px-4 rounded-lg border-2 border-white transition-colors flex items-center justify-center gap-2"
+            className="flex-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-300 font-medium py-3 px-4 rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2 text-sm"
           >
             <span className="hidden sm:inline">次へ</span>
-            <ChevronRight size={18} />
+            <ChevronRight size={16} />
           </button>
         </div>
 
         {showExplanation && currentQuestion === questionList.length - 1 && (
           <button
             onClick={handleSubmit}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 tracking-wide text-sm"
           >
             結果を確認
           </button>
