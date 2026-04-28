@@ -180,17 +180,23 @@ const JSTQBExam = () => {
 
               console.log(`✅ ${questions.length}問のデータを取得しました`);
               
-              // 更新日時を現在の日時に設定
-              const now = new Date();
-              const formattedDate = now.toLocaleString('ja-JP', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-              });
-              setLastUpdated(formattedDate);
+              // CSVファイルの最終更新日をLast-Modifiedヘッダーから取得
+              const lastModified = response.headers.get('Last-Modified');
+              if (lastModified) {
+                const fileDate = new Date(lastModified);
+                const formattedDate = fileDate.toLocaleString('ja-JP', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                });
+                setLastUpdated(formattedDate);
+              } else {
+                // Last-Modifiedが取得できない場合はnullのまま（表示しない）
+                console.log('⚠️ Last-Modifiedヘッダーが取得できませんでした');
+              }
               
               // デバッグ：最初の問題のデータ構造を確認
               if (questions.length > 0) {
