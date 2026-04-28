@@ -219,34 +219,18 @@ const JSTQBExam = () => {
         console.log(`✅ ${questions.length}問のデータを取得しました`);
         setQuestions(questions);
 
-        // GASから最終更新日を取得（JSONP形式でCORS回避）
+        // GASから最終更新日を取得
         try {
-          const lastUpdatedResult = await new Promise((resolve, reject) => {
-            const callbackName = 'gasCallback_' + Date.now();
-            const script = document.createElement('script');
-            const timeout = setTimeout(() => {
-              delete window[callbackName];
-              document.body.removeChild(script);
-              reject(new Error('timeout'));
-            }, 5000);
-            window[callbackName] = (data) => {
-              clearTimeout(timeout);
-              delete window[callbackName];
-              document.body.removeChild(script);
-              resolve(data);
-            };
-            script.src = GAS_URL + '?callback=' + callbackName;
-            script.onerror = () => {
-              clearTimeout(timeout);
-              delete window[callbackName];
-              document.body.removeChild(script);
-              reject(new Error('script load error'));
-            };
-            document.body.appendChild(script);
-          });
-          if (lastUpdatedResult.lastUpdated) {
-            setLastUpdated(lastUpdatedResult.lastUpdated);
-            console.log('📅 最終更新日:', lastUpdatedResult.lastUpdated);
+          const gasRes = await fetch(GAS_URL, { redirect: 'follow' });
+          const text = await gasRes.text();
+          // HtmlServiceはHTMLで返るのでJSONを抽出
+          const match = text.match(/\{.*\}/s);
+          if (match) {
+            const gasData = JSON.parse(match[0]);
+            if (gasData.lastUpdated) {
+              setLastUpdated(gasData.lastUpdated);
+              console.log('📅 最終更新日:', gasData.lastUpdated);
+            }
           }
         } catch (gasErr) {
           console.log('⚠️ 最終更新日の取得に失敗:', gasErr.message);
