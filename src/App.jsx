@@ -25,6 +25,7 @@ const JSTQBExam = () => {
   const [error, setError] = useState(null);
   const [usedQuestionIds, setUsedQuestionIds] = useState(new Set());
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [pendingAnswer, setPendingAnswer] = useState(null); // 仮選択（未確定）
 
   // GAS WebアプリURL（スプレッドシートの最終更新日取得）
   const GAS_URL = '/api/last-updated';
@@ -309,6 +310,7 @@ const JSTQBExam = () => {
     setSelectedAnswers({});
     setShowResults(false);
     setShowExplanation(false);
+    setPendingAnswer(null);
   };
 
   const handleReset = () => {
@@ -319,19 +321,27 @@ const JSTQBExam = () => {
     setShowExplanation(false);
     setShuffledQuestions([]);
     setOptionsMap({});
+    setPendingAnswer(null);
   };
 
   const handleAnswerSelect = (answerIndex) => {
     if (selectedAnswers[currentQuestion] !== undefined) return;
+    // 仮選択（未確定）として記録
+    setPendingAnswer(answerIndex);
+  };
+
+  const handleConfirmAnswer = () => {
+    if (pendingAnswer === null || selectedAnswers[currentQuestion] !== undefined) return;
 
     const question = shuffledQuestions[currentQuestion];
     const mappedOptions = optionsMap[currentQuestion];
-    const selectedOptionOriginalIndex = mappedOptions[answerIndex].originalIdx;
+    const selectedOptionOriginalIndex = mappedOptions[pendingAnswer].originalIdx;
 
     setSelectedAnswers((prev) => ({
       ...prev,
       [currentQuestion]: selectedOptionOriginalIndex,
     }));
+    setPendingAnswer(null);
     setShowExplanation(true);
   };
 
@@ -342,6 +352,7 @@ const JSTQBExam = () => {
       console.log(`[handleNext] 次の問題: ${nextQuestion}, selectedAnswers[${nextQuestion}]: ${selectedAnswers[nextQuestion]}`);
       setCurrentQuestion(nextQuestion);
       setShowExplanation(false);
+      setPendingAnswer(null);
     }
   };
 
@@ -350,6 +361,7 @@ const JSTQBExam = () => {
     if (currentQuestion > 0) {
       setCurrentQuestion(currentQuestion - 1);
       setShowExplanation(selectedAnswers[currentQuestion - 1] !== undefined);
+      setPendingAnswer(null);
     }
   };
 
@@ -434,18 +446,6 @@ const JSTQBExam = () => {
               </button>
             </div>
           )}
-
-          <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 text-left text-sm text-gray-700">
-            <p className="font-semibold mb-2">📋 特徴：</p>
-            <ul className="space-y-1 text-xs">
-              <li>✓ 難易度：高（実務的な判断が必要）</li>
-              <li>✓ 長文問題：プロジェクト状況に基づいた判定</li>
-              <li>✓ 見積もり：SMART関連問題充実</li>
-              <li>✓ 毎回異なる出題順と選択肢順</li>
-              <li>✓ Google Sheets から自動取得</li>
-              <li>✓ 問題追加時にコードの変更は不要</li>
-            </ul>
-          </div>
 
           <button
             onClick={handleStartQuiz}
@@ -588,7 +588,7 @@ const JSTQBExam = () => {
           {question.question}
         </h2>
 
-        <div className="space-y-3 mb-6">
+        <div className="space-y-3 mb-4">
           {displayOptions.map((option, index) => (
             <button
               key={`${currentQuestion}-${index}`}
@@ -601,7 +601,9 @@ const JSTQBExam = () => {
                     : selectedAnswers[currentQuestion] === mappedOptions[index].originalIdx
                     ? 'border-red-500 bg-red-50'
                     : 'border-gray-200 bg-gray-50'
-                  : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer'
+                  : pendingAnswer === index
+                  ? 'border-blue-500 bg-blue-50 cursor-pointer'
+                  : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'
               }`}
             >
               <div className="flex items-start gap-3">
@@ -613,6 +615,18 @@ const JSTQBExam = () => {
             </button>
           ))}
         </div>
+
+        {selectedAnswers[currentQuestion] === undefined && (
+          <div className="mb-4">
+            <button
+              onClick={handleConfirmAnswer}
+              disabled={pendingAnswer === null}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-lg transition-colors"
+            >
+              回答する
+            </button>
+          </div>
+        )}
 
         {showExplanation && (
           <div
