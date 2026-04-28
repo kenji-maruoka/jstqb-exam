@@ -26,6 +26,9 @@ const JSTQBExam = () => {
   const [usedQuestionIds, setUsedQuestionIds] = useState(new Set());
   const [lastUpdated, setLastUpdated] = useState(null);
 
+  // GAS WebアプリURL（スプレッドシートの最終更新日取得）
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbyZseKn9rTVgRD9rtt6c6ozQvIWQbaLWwcVaop-T1pakJXTM-LYMkgCMw1qeIahSFYVIw/exec';
+
   // =========================================
   // Google Sheets API からデータを取得
   // =========================================
@@ -180,23 +183,7 @@ const JSTQBExam = () => {
 
               console.log(`✅ ${questions.length}問のデータを取得しました`);
               
-              // CSVファイルの最終更新日をLast-Modifiedヘッダーから取得
-              const lastModified = response.headers.get('Last-Modified');
-              if (lastModified) {
-                const fileDate = new Date(lastModified);
-                const formattedDate = fileDate.toLocaleString('ja-JP', {
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit'
-                });
-                setLastUpdated(formattedDate);
-              } else {
-                // Last-Modifiedが取得できない場合はnullのまま（表示しない）
-                console.log('⚠️ Last-Modifiedヘッダーが取得できませんでした');
-              }
+
               
               // デバッグ：最初の問題のデータ構造を確認
               if (questions.length > 0) {
@@ -231,6 +218,19 @@ const JSTQBExam = () => {
 
         console.log(`✅ ${questions.length}問のデータを取得しました`);
         setQuestions(questions);
+
+        // GASから最終更新日を取得
+        try {
+          const gasRes = await fetch(GAS_URL);
+          const gasData = await gasRes.json();
+          if (gasData.lastUpdated) {
+            setLastUpdated(gasData.lastUpdated);
+            console.log('📅 最終更新日:', gasData.lastUpdated);
+          }
+        } catch (gasErr) {
+          console.log('⚠️ 最終更新日の取得に失敗:', gasErr.message);
+        }
+
         setLoading(false);
       } catch (err) {
         console.error('❌ エラーが発生しました:', err);
@@ -442,18 +442,18 @@ const JSTQBExam = () => {
             </ul>
           </div>
 
-          {lastUpdated && (
-            <div className="bg-gray-50 border-l-4 border-gray-400 p-3 mb-6 text-center text-xs text-gray-600">
-              <p>📅 データ更新：<span className="font-semibold">{lastUpdated}</span></p>
-            </div>
-          )}
-
           <button
             onClick={handleStartQuiz}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors"
           >
             模試を開始
           </button>
+
+          {lastUpdated && (
+            <div className="bg-gray-50 border-l-4 border-gray-400 p-3 mb-2 text-center text-xs text-gray-600">
+              <p>📅 データ最終更新：<span className="font-semibold">{lastUpdated}</span></p>
+            </div>
+          )}
 
           <p className="text-xs text-gray-500 mt-4">
             データソース: Google Sheets（リアルタイム更新）
