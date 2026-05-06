@@ -25,7 +25,7 @@ const JSTQBExam = () => {
   const [error, setError] = useState(null);
   const [usedQuestionIds, setUsedQuestionIds] = useState(new Set());
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [pendingAnswer, setPendingAnswer] = useState(null); // 仮選択（未確定）
+  const [pendingAnswers, setPendingAnswers] = useState(new Set()); // 仮選択（未確定、複数対応）
   const [sheetTitle, setSheetTitle] = useState('');
 
   // GAS WebアプリURL（スプレッドシートの最終更新日取得）
@@ -78,6 +78,10 @@ const JSTQBExam = () => {
                 const cols = row.c;
                 if (!cols[0] || !cols[0].v) return null;
 
+                const correctRaw = String(cols[8].v || '0');
+                const correctArr = correctRaw.includes(',')
+                  ? correctRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+                  : [parseInt(correctRaw) || 0];
                 return {
                   id: String(cols[0].v),
                   category: String(cols[1].v || ''),
@@ -89,7 +93,7 @@ const JSTQBExam = () => {
                     String(cols[6].v || ''),
                     String(cols[7].v || '')
                   ],
-                  correct: parseInt(cols[8].v) || 0,
+                  correct: correctArr,
                   explanation: String(cols[9].v || '')
                 };
               }).filter(q => q !== null);
@@ -168,6 +172,10 @@ const JSTQBExam = () => {
                   return null;
                 }
 
+                const correctRaw = parts[8] || '0';
+                const correctArr = correctRaw.includes(',')
+                  ? correctRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+                  : [parseInt(correctRaw) || 0];
                 return {
                   id: parts[0] || '',
                   category: parts[1] || '',
@@ -179,7 +187,7 @@ const JSTQBExam = () => {
                     parts[6] || '',
                     parts[7] || ''
                   ],
-                  correct: parseInt(parts[8]) || 0,
+                  correct: correctArr,
                   explanation: parts[9] || ''
                 };
               }).filter(q => q !== null);
@@ -343,7 +351,7 @@ const JSTQBExam = () => {
     setSelectedAnswers({});
     setShowResults(false);
     setShowExplanation(false);
-    setPendingAnswer(null);
+    setPendingAnswers(new Set());
   };
 
   const handleReset = () => {
@@ -354,27 +362,44 @@ const JSTQBExam = () => {
     setShowExplanation(false);
     setShuffledQuestions([]);
     setOptionsMap({});
-    setPendingAnswer(null);
+    setPendingAnswers(new Set());
   };
 
   const handleAnswerSelect = (answerIndex) => {
     if (selectedAnswers[currentQuestion] !== undefined) return;
-    // 仮選択（未確定）として記録
-    setPendingAnswer(answerIndex);
+    const question = shuffledQuestions[currentQuestion];
+    const isMulti = question.correct.length > 1;
+    if (isMulti) {
+      // 複数選択：トグル
+      setPendingAnswers(prev => {
+        const next = new Set(prev);
+        if (next.has(answerIndex)) {
+          next.delete(answerIndex);
+        } else {
+          next.add(answerIndex);
+        }
+        return next;
+      });
+    } else {
+      // 単一選択：置き換え
+      setPendingAnswers(new Set([answerIndex]));
+    }
   };
 
   const handleConfirmAnswer = () => {
-    if (pendingAnswer === null || selectedAnswers[currentQuestion] !== undefined) return;
+    if (pendingAnswers.size === 0 || selectedAnswers[currentQuestion] !== undefined) return;
 
-    const question = shuffledQuestions[currentQuestion];
     const mappedOptions = optionsMap[currentQuestion];
-    const selectedOptionOriginalIndex = mappedOptions[pendingAnswer].originalIdx;
+    // 選択した表示インデックス → 元のインデックスの配列（ソート済み）
+    const selectedOriginalIndices = Array.from(pendingAnswers)
+      .map(displayIdx => mappedOptions[displayIdx].originalIdx)
+      .sort((a, b) => a - b);
 
     setSelectedAnswers((prev) => ({
       ...prev,
-      [currentQuestion]: selectedOptionOriginalIndex,
+      [currentQuestion]: selectedOriginalIndices,
     }));
-    setPendingAnswer(null);
+    setPendingAnswers(new Set());
     setShowExplanation(true);
   };
 
@@ -385,7 +410,7 @@ const JSTQBExam = () => {
       console.log(`[handleNext] 次の問題: ${nextQuestion}, selectedAnswers[${nextQuestion}]: ${selectedAnswers[nextQuestion]}`);
       setCurrentQuestion(nextQuestion);
       setShowExplanation(false);
-      setPendingAnswer(null);
+      setPendingAnswers(new Set());
     }
   };
 
@@ -394,7 +419,7 @@ const JSTQBExam = () => {
     if (currentQuestion > 0) {
       setCurrentQuestion(currentQuestion - 1);
       setShowExplanation(selectedAnswers[currentQuestion - 1] !== undefined);
-      setPendingAnswer(null);
+      setPendingAnswers(new Set());
     }
   };
 
@@ -521,8 +546,13 @@ const JSTQBExam = () => {
   // =========================================
   if (showResults) {
     const questionList = shuffledQuestions;
-    const correctCount = Object.entries(selectedAnswers).reduce((count, [qIdx, selectedIdx]) => {
-      return count + (selectedIdx === questionList[qIdx].correct ? 1 : 0);
+    const correctCount = Object.entries(selectedAnswers).reduce((count, [qIdx, selectedArr]) => {
+      const q = questionList[qIdx];
+      const correctArr = [...q.correct].sort((a, b) => a - b);
+      const answeredArr = [...selectedArr].sort((a, b) => a - b);
+      const isCorrect = correctArr.length === answeredArr.length &&
+        correctArr.every((v, i) => v === answeredArr[i]);
+      return count + (isCorrect ? 1 : 0);
     }, 0);
 
     const categoryStats = {};
@@ -531,7 +561,12 @@ const JSTQBExam = () => {
         categoryStats[q.category] = { total: 0, correct: 0 };
       }
       categoryStats[q.category].total += 1;
-      if (selectedAnswers[idx] === q.correct) {
+      const selectedArr = selectedAnswers[idx] || [];
+      const correctArr = [...q.correct].sort((a, b) => a - b);
+      const answeredArr = [...selectedArr].sort((a, b) => a - b);
+      const isCorrect = correctArr.length === answeredArr.length &&
+        correctArr.every((v, i) => v === answeredArr[i]);
+      if (isCorrect) {
         categoryStats[q.category].correct += 1;
       }
     });
@@ -594,13 +629,26 @@ const JSTQBExam = () => {
 
   const question = questionList[currentQuestion];
   const mappedOptions = optionsMap[currentQuestion] || [];
-  const correctAnswerIndex = question.correct;
+  const correctAnswerIndices = question.correct; // 配列
+  const isMultiAnswer = correctAnswerIndices.length > 1;
   const displayOptions = mappedOptions.map((opt) => opt.text);
 
-  // ★ 修正: 正解の表示位置を正しく計算 ★
-  // シャッフル後の配列で、正解に対応するインデックスを探す
-  const correctPositionInDisplay = mappedOptions.findIndex(opt => opt.originalIdx === correctAnswerIndex);
-  const correctOptionText = mappedOptions[correctPositionInDisplay]?.text || '';
+  // シャッフル後の表示位置で正解インデックスを特定
+  const correctPositionsInDisplay = mappedOptions
+    .map((opt, displayIdx) => ({ displayIdx, originalIdx: opt.originalIdx }))
+    .filter(({ originalIdx }) => correctAnswerIndices.includes(originalIdx))
+    .map(({ displayIdx }) => displayIdx);
+
+  // 回答済みかどうか
+  const answered = selectedAnswers[currentQuestion] !== undefined;
+  const answeredOriginalIndices = answered ? selectedAnswers[currentQuestion] : [];
+
+  // 正解かどうかの判定
+  const isAnswerCorrect = answered && (() => {
+    const correctArr = [...correctAnswerIndices].sort((a, b) => a - b);
+    const answeredArr = [...answeredOriginalIndices].sort((a, b) => a - b);
+    return correctArr.length === answeredArr.length && correctArr.every((v, i) => v === answeredArr[i]);
+  })();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 py-8">
@@ -626,6 +674,9 @@ const JSTQBExam = () => {
         {/* 問題カード */}
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-4">
           <p className="text-xs text-slate-500 mb-4">ID: {question.id}</p>
+          {isMultiAnswer && (
+            <p className="text-xs text-indigo-400 mb-3 font-medium">※ 正解は {correctAnswerIndices.length} つあります（複数選択）</p>
+          )}
           <p className="text-white text-base leading-relaxed whitespace-pre-wrap font-medium">
             {question.question}
           </p>
@@ -633,52 +684,75 @@ const JSTQBExam = () => {
 
         {/* 選択肢 */}
         <div className="space-y-2 mb-4">
-          {displayOptions.map((option, index) => (
-            <button
-              key={`${currentQuestion}-${index}`}
-              onClick={() => handleAnswerSelect(index)}
-              disabled={selectedAnswers[currentQuestion] !== undefined}
-              className={`w-full text-left p-4 rounded-xl border transition-all ${
-                selectedAnswers[currentQuestion] !== undefined
-                  ? mappedOptions[index].originalIdx === correctAnswerIndex
-                    ? 'border-emerald-500 bg-emerald-900/30 text-emerald-300'
-                    : selectedAnswers[currentQuestion] === mappedOptions[index].originalIdx
-                    ? 'border-red-500 bg-red-900/30 text-red-300'
-                    : 'border-slate-700 bg-slate-800/50 text-slate-500'
-                  : pendingAnswer === index
-                  ? 'border-indigo-500 bg-indigo-900/40 text-white cursor-pointer'
-                  : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500 hover:text-white cursor-pointer'
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <span className={`text-xs font-bold mt-0.5 w-5 shrink-0 ${
-                  selectedAnswers[currentQuestion] !== undefined
-                    ? mappedOptions[index].originalIdx === correctAnswerIndex
-                      ? 'text-emerald-400'
-                      : selectedAnswers[currentQuestion] === mappedOptions[index].originalIdx
-                      ? 'text-red-400'
-                      : 'text-slate-600'
-                    : pendingAnswer === index
-                    ? 'text-indigo-400'
-                    : 'text-slate-500'
-                }`}>
-                  {String.fromCharCode(65 + index)}
-                </span>
-                <span className="text-sm leading-relaxed">{option}</span>
-              </div>
-            </button>
-          ))}
+          {displayOptions.map((option, index) => {
+            const optOriginalIdx = mappedOptions[index]?.originalIdx;
+            const isCorrectOption = correctAnswerIndices.includes(optOriginalIdx);
+            const isSelectedOption = answered
+              ? answeredOriginalIndices.includes(optOriginalIdx)
+              : pendingAnswers.has(index);
+
+            let buttonClass = 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500 hover:text-white cursor-pointer';
+            if (answered) {
+              if (isCorrectOption) {
+                buttonClass = 'border-emerald-500 bg-emerald-900/30 text-emerald-300';
+              } else if (isSelectedOption) {
+                buttonClass = 'border-red-500 bg-red-900/30 text-red-300';
+              } else {
+                buttonClass = 'border-slate-700 bg-slate-800/50 text-slate-500';
+              }
+            } else if (isSelectedOption) {
+              buttonClass = 'border-indigo-500 bg-indigo-900/40 text-white cursor-pointer';
+            }
+
+            let labelClass = 'text-slate-500';
+            if (answered) {
+              if (isCorrectOption) labelClass = 'text-emerald-400';
+              else if (isSelectedOption) labelClass = 'text-red-400';
+              else labelClass = 'text-slate-600';
+            } else if (isSelectedOption) {
+              labelClass = 'text-indigo-400';
+            }
+
+            return (
+              <button
+                key={`${currentQuestion}-${index}`}
+                onClick={() => handleAnswerSelect(index)}
+                disabled={answered}
+                className={`w-full text-left p-4 rounded-xl border transition-all ${buttonClass}`}
+              >
+                <div className="flex items-start gap-3">
+                  {isMultiAnswer && !answered ? (
+                    <span className={`mt-0.5 w-5 h-5 shrink-0 rounded border-2 flex items-center justify-center ${
+                      isSelectedOption ? 'border-indigo-400 bg-indigo-500' : 'border-slate-500'
+                    }`}>
+                      {isSelectedOption && <span className="text-white text-xs font-bold">✓</span>}
+                    </span>
+                  ) : (
+                    <span className={`text-xs font-bold mt-0.5 w-5 shrink-0 ${labelClass}`}>
+                      {String.fromCharCode(65 + index)}
+                    </span>
+                  )}
+                  <span className="text-sm leading-relaxed">{option}</span>
+                  {answered && isCorrectOption && (
+                    <span className="ml-auto text-emerald-400 text-xs font-bold shrink-0">✓ 正解</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* 回答ボタン */}
-        {selectedAnswers[currentQuestion] === undefined && (
+        {!answered && (
           <div className="mb-4">
             <button
               onClick={handleConfirmAnswer}
-              disabled={pendingAnswer === null}
+              disabled={pendingAnswers.size === 0 || (isMultiAnswer && pendingAnswers.size < correctAnswerIndices.length)}
               className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold py-3.5 px-6 rounded-xl transition-all tracking-wide text-sm"
             >
-              回答する
+              {isMultiAnswer
+                ? `回答する（${pendingAnswers.size} / ${correctAnswerIndices.length} 選択中）`
+                : '回答する'}
             </button>
           </div>
         )}
@@ -686,20 +760,26 @@ const JSTQBExam = () => {
         {/* 解説 */}
         {showExplanation && (
           <div className={`rounded-xl p-5 mb-4 border ${
-            selectedAnswers[currentQuestion] === correctAnswerIndex
+            isAnswerCorrect
               ? 'bg-emerald-900/20 border-emerald-800'
               : 'bg-slate-800 border-slate-700'
           }`}>
             <p className={`text-xs font-semibold tracking-widest uppercase mb-3 ${
-              selectedAnswers[currentQuestion] === correctAnswerIndex ? 'text-emerald-400' : 'text-indigo-400'
+              isAnswerCorrect ? 'text-emerald-400' : 'text-indigo-400'
             }`}>
-              {selectedAnswers[currentQuestion] === correctAnswerIndex ? '✓ Correct' : 'Answer'}
+              {isAnswerCorrect ? '✓ Correct' : 'Answer'}
             </p>
             <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap mb-3">
               {question.explanation}
             </p>
             <p className="text-xs text-slate-500">
-              正解: <span className="text-slate-300 font-medium">{String.fromCharCode(65 + correctPositionInDisplay)}. {correctOptionText}</span>
+              正解:{' '}
+              {correctPositionsInDisplay.map((displayIdx, i) => (
+                <span key={displayIdx} className="text-slate-300 font-medium">
+                  {i > 0 && '、'}
+                  {String.fromCharCode(65 + displayIdx)}. {mappedOptions[displayIdx]?.text}
+                </span>
+              ))}
             </p>
           </div>
         )}
