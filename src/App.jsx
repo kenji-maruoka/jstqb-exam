@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw, FileSpreadsheet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
 import buildInfo from '../build-info.json';
 
 // =========================================
 // 定数
 // =========================================
-const DRIVE_FOLDER_ID = '1R7B8xU1dYEooNg4IZ4GK1T4C8J-iyafd';
+const GAS_FILE_LIST_URL = 'https://script.google.com/macros/s/AKfycbxi1NOTkaDgFctucHZRweVOl7ZIg85VGUJ3QI9ozhOPWm8CG__-nvVj9TvazKWZatot_A/exec';
 const SHEET_NAME = 'questions';
 
 const JSTQBExam = () => {
@@ -36,44 +36,26 @@ const JSTQBExam = () => {
   const GAS_URL = '/api/last-updated';
 
   // =========================================
-  // 起動時: Google Drive フォルダのスプレッドシート一覧を取得
-  // Drive API v3 は認証なしでは公開フォルダでも CORS 制限がある。
-  // 取得できない場合は手動入力フォームにフォールバック。
+  // 起動時: GAS WebアプリからSpreadsheet一覧を取得
   // =========================================
   useEffect(() => {
     const fetchFileList = async () => {
       setListLoading(true);
       setListError(null);
-
       try {
-        // Drive API v3 (公開フォルダ、APIキーなし) を試みる
-        const encoded = encodeURIComponent(
-          `'${DRIVE_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`
-        );
-        const apiUrl = `https://www.googleapis.com/drive/v3/files?q=${encoded}&fields=files(id,name,modifiedTime)&orderBy=name`;
-
-        const res = await fetch(apiUrl, {
-          method: 'GET',
-          headers: { 'Accept': 'application/json' },
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.files && data.files.length > 0) {
-            setSpreadsheetList(data.files);
-            setListLoading(false);
-            return;
-          }
-        }
-
-        throw new Error('Drive API unavailable without API key');
+        const res = await fetch(GAS_FILE_LIST_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        if (!data.files || data.files.length === 0) throw new Error('ファイルが見つかりませんでした');
+        setSpreadsheetList(data.files);
       } catch (err) {
-        console.warn('Drive API取得失敗 (CORS制限のため手動入力に切り替え):', err.message);
-        setListError('cors');
+        console.error('ファイル一覧の取得に失敗:', err.message);
+        setListError(err.message);
+      } finally {
         setListLoading(false);
       }
     };
-
     fetchFileList();
   }, []);
 
@@ -374,73 +356,17 @@ const JSTQBExam = () => {
   };
 
   // =========================================
-  // レンダリング: ファイル選択画面
+  // レンダリング: ファイル選択画面（プルダウン）
   // =========================================
   if (phase === 'select') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-        <div className="max-w-lg w-full">
-          <div className="text-center mb-10">
-            <p className="text-indigo-400 text-xs tracking-widest uppercase mb-4">Exam Simulator</p>
-            <h1 className="text-3xl font-bold text-white leading-tight mb-2">模試ファイルを選択</h1>
-            <p className="text-slate-400 text-sm">使用するスプレッドシートを選んでください</p>
-          </div>
-
-          {listLoading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-600 border-t-indigo-400 mx-auto mb-4"></div>
-              <p className="text-slate-400 text-sm">ファイル一覧を取得中...</p>
-            </div>
-          ) : listError ? (
-            // Drive API が使えない場合: 手動入力フォーム
-            <div className="space-y-4">
-              <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
-                <p className="text-amber-400 text-xs tracking-widest uppercase mb-2">シートIDを入力</p>
-                <p className="text-slate-500 text-xs leading-relaxed mb-4">
-                  Google Drive のCORS制限により自動取得できませんでした。
-                  スプレッドシートのURLまたはIDを直接入力してください。
-                </p>
-                <ManualSheetInput onSelect={handleSelectSheet} />
-              </div>
-              <p className="text-slate-600 text-xs text-center leading-relaxed">
-                URLの例: docs.google.com/spreadsheets/d/<span className="text-slate-400">【ID】</span>/edit
-              </p>
-            </div>
-          ) : spreadsheetList.length === 0 ? (
-            <div className="space-y-4">
-              <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 text-center mb-4">
-                <p className="text-slate-400 text-sm">フォルダ内にスプレッドシートが見つかりませんでした</p>
-              </div>
-              <ManualSheetInput onSelect={handleSelectSheet} />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {spreadsheetList.map(file => (
-                <button
-                  key={file.id}
-                  onClick={() => handleSelectSheet(file.id, file.name)}
-                  className="w-full text-left bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-indigo-500 rounded-xl p-4 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileSpreadsheet size={18} className="text-indigo-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{file.name}</p>
-                      {file.modifiedTime && (
-                        <p className="text-slate-500 text-xs mt-0.5">
-                          更新: {new Date(file.modifiedTime).toLocaleDateString('ja-JP')}
-                        </p>
-                      )}
-                    </div>
-                    <ChevronRight size={14} className="text-slate-600 group-hover:text-indigo-400 transition-colors shrink-0" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          <p className="text-slate-700 text-xs text-center mt-8">Build: {buildInfo.buildDate}</p>
-        </div>
-      </div>
+      <SelectScreen
+        listLoading={listLoading}
+        listError={listError}
+        spreadsheetList={spreadsheetList}
+        onSelect={handleSelectSheet}
+        buildDate={buildInfo.buildDate}
+      />
     );
   }
 
@@ -823,60 +749,85 @@ const JSTQBExam = () => {
 };
 
 // =========================================
-// 手動シートID入力コンポーネント
+// ファイル選択画面コンポーネント（プルダウン）
 // =========================================
-const ManualSheetInput = ({ onSelect }) => {
-  const [inputValue, setInputValue] = useState('');
-  const [nameValue, setNameValue] = useState('');
-  const [inputError, setInputError] = useState('');
+const SelectScreen = ({ listLoading, listError, spreadsheetList, onSelect, buildDate }) => {
+  const [selectedId, setSelectedId] = useState('');
 
-  const extractSheetId = (input) => {
-    const urlMatch = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-    if (urlMatch) return urlMatch[1];
-    if (/^[a-zA-Z0-9_-]{20,}$/.test(input.trim())) return input.trim();
-    return null;
-  };
-
-  const handleSubmit = () => {
-    const sheetId = extractSheetId(inputValue);
-    if (!sheetId) {
-      setInputError('有効なスプレッドシートIDまたはURLを入力してください');
-      return;
-    }
-    setInputError('');
-    onSelect(sheetId, nameValue || 'カスタムシート');
+  const handleStart = () => {
+    if (!selectedId) return;
+    const file = spreadsheetList.find(f => f.id === selectedId);
+    if (file) onSelect(file.id, file.name);
   };
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="text-slate-400 text-xs mb-1.5 block">スプレッドシートID または URL</label>
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => { setInputValue(e.target.value); setInputError(''); }}
-          placeholder="1abc...xyz または https://docs.google.com/..."
-          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-        />
-        {inputError && <p className="text-red-400 text-xs mt-1">{inputError}</p>}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+      <div className="max-w-md w-full">
+        <div className="text-center mb-10">
+          <p className="text-indigo-400 text-xs tracking-widest uppercase mb-4">Exam Simulator</p>
+          <h1 className="text-3xl font-bold text-white leading-tight mb-2">JSTQB 模試</h1>
+          <p className="text-slate-400 text-sm">使用する模試ファイルを選択してください</p>
+        </div>
+
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
+          {listLoading ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-600 border-t-indigo-400 mx-auto mb-4"></div>
+              <p className="text-slate-400 text-sm">ファイル一覧を取得中...</p>
+            </div>
+          ) : listError ? (
+            <div className="text-center py-8">
+              <p className="text-red-400 text-xs tracking-widest uppercase mb-3">Error</p>
+              <p className="text-slate-400 text-sm leading-relaxed">{listError}</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="text-slate-400 text-xs tracking-widest uppercase mb-3 block">
+                  模試ファイル
+                </label>
+                <div className="relative">
+                  <select
+                    value={selectedId}
+                    onChange={(e) => setSelectedId(e.target.value)}
+                    className="w-full appearance-none bg-slate-700 border border-slate-600 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer pr-10"
+                  >
+                    <option value="" disabled className="text-slate-500">-- 選択してください --</option>
+                    {spreadsheetList.map(file => (
+                      <option key={file.id} value={file.id} className="bg-slate-700 text-white">
+                        {file.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+                {selectedId && (() => {
+                  const f = spreadsheetList.find(f => f.id === selectedId);
+                  return f?.modifiedTime ? (
+                    <p className="text-slate-500 text-xs mt-2 pl-1">
+                      最終更新: {new Date(f.modifiedTime).toLocaleDateString('ja-JP')}
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+
+              <button
+                onClick={handleStart}
+                disabled={!selectedId}
+                className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold py-3.5 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 tracking-wide text-sm"
+              >
+                開始する
+              </button>
+            </div>
+          )}
+        </div>
+
+        <p className="text-slate-700 text-xs text-center mt-6">Build: {buildDate}</p>
       </div>
-      <div>
-        <label className="text-slate-400 text-xs mb-1.5 block">表示名（任意）</label>
-        <input
-          type="text"
-          value={nameValue}
-          onChange={(e) => setNameValue(e.target.value)}
-          placeholder="例: JSTQB 模試 2024"
-          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
-        />
-      </div>
-      <button
-        onClick={handleSubmit}
-        disabled={!inputValue.trim()}
-        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-xl transition-all text-sm"
-      >
-        このシートで開始
-      </button>
     </div>
   );
 };
