@@ -1,299 +1,280 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, FileSpreadsheet } from 'lucide-react';
 import buildInfo from '../build-info.json';
+
+// =========================================
+// 定数
+// =========================================
+const DRIVE_FOLDER_ID = '1R7B8xU1dYEooNg4IZ4GK1T4C8J-iyafd';
+const SHEET_NAME = 'questions';
 
 const JSTQBExam = () => {
   // =========================================
-  // ★重要★ Google Sheets ID を設定
-  // =========================================
-  // YOUR_SHEET_ID を自分の Sheet ID に置き換えてください
-  const SHEET_ID = '13y0AytiKRkgcFO43w9YQgpI85GHRUo8RIRnCVES_yCk';
-  const SHEET_NAME = 'questions';
-
-  // =========================================
   // State管理
+  // phase: 'select' | 'loading' | 'error' | 'home' | 'quiz' | 'results'
   // =========================================
+  const [phase, setPhase] = useState('select');
+  const [spreadsheetList, setSpreadsheetList] = useState([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState(null);
+  const [selectedSheetId, setSelectedSheetId] = useState(null);
+  const [selectedSheetName, setSelectedSheetName] = useState('');
+
   const [questions, setQuestions] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState({});
-  const [showResults, setShowResults] = useState(false);
-  const [quizStarted, setQuizStarted] = useState(false);
   const [showExplanation, setShowExplanation] = useState(false);
   const [shuffledQuestions, setShuffledQuestions] = useState([]);
   const [optionsMap, setOptionsMap] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [usedQuestionIds, setUsedQuestionIds] = useState(new Set());
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [pendingAnswers, setPendingAnswers] = useState(new Set()); // 仮選択（未確定、複数対応）
+  const [pendingAnswers, setPendingAnswers] = useState(new Set());
   const [sheetTitle, setSheetTitle] = useState('');
 
-  // GAS WebアプリURL（スプレッドシートの最終更新日取得）
   const GAS_URL = '/api/last-updated';
 
   // =========================================
-  // Google Sheets API からデータを取得
+  // 起動時: Google Drive フォルダのスプレッドシート一覧を取得
+  // Drive API v3 は認証なしでは公開フォルダでも CORS 制限がある。
+  // 取得できない場合は手動入力フォームにフォールバック。
   // =========================================
   useEffect(() => {
-    const fetchQuestions = async () => {
+    const fetchFileList = async () => {
+      setListLoading(true);
+      setListError(null);
+
       try {
-        console.log('📡 Google Sheets から問題データをフェッチしています...');
-        console.log(`🔑 使用中の Sheet ID: ${SHEET_ID}`);
-        console.log(`📄 使用中のシート名: ${SHEET_NAME}`);
+        // Drive API v3 (公開フォルダ、APIキーなし) を試みる
+        const encoded = encodeURIComponent(
+          `'${DRIVE_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`
+        );
+        const apiUrl = `https://www.googleapis.com/drive/v3/files?q=${encoded}&fields=files(id,name,modifiedTime)&orderBy=name`;
 
-        // CORS対応：複数のエンドポイントを試す
-        const urls = [
-          // 方法1: JSONP形式（推奨）
-          `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/query?tqx=out:json&sheet=${SHEET_NAME}`,
-          // 方法2: CSV形式をJSON に変換
-          `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`,
-        ];
+        const res = await fetch(apiUrl, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        });
 
-        let questions = null;
-        let lastError = null;
-
-        // 複数の方法を試す
-        for (const url of urls) {
-          try {
-            console.log('試行中:', url);
-            const response = await fetch(url, {
-              method: 'GET',
-              mode: 'cors',
-              headers: {
-                'Accept': 'application/json, text/plain, */*',
-              }
-            });
-
-            if (!response.ok) continue;
-
-            const text = await response.text();
-
-            // JSON形式の場合
-            if (text.includes('google.visualization')) {
-              const jsonString = text.substring(47).slice(0, -2);
-              const jsonData = JSON.parse(jsonString);
-
-              // スプレッドシートのタイトルを取得（reqId前のtable.parsedNumHeadersやresponseHandler周辺には含まれないため別途取得）
-              questions = jsonData.table.rows.map((row) => {
-                const cols = row.c;
-                if (!cols[0] || !cols[0].v) return null;
-
-                const correctRaw = String(cols[8].v || '0');
-                const correctArr = correctRaw.includes(',')
-                  ? correctRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-                  : [parseInt(correctRaw) || 0];
-                return {
-                  id: String(cols[0].v),
-                  category: String(cols[1].v || ''),
-                  chapter: String(cols[2].v || ''),
-                  question: String(cols[3].v || ''),
-                  options: [
-                    String(cols[4].v || ''),
-                    String(cols[5].v || ''),
-                    String(cols[6].v || ''),
-                    String(cols[7].v || '')
-                  ],
-                  correct: correctArr,
-                  explanation: String(cols[9].v || '')
-                };
-              }).filter(q => q !== null);
-              break;
-            }
-            // CSV形式の場合
-            else if (text.includes(',')) {
-              // シンプルな改行対応CSVパーサー
-              const parseCSVWithNewlines = (csv) => {
-                const rows = [];
-                let row = [];
-                let field = '';
-                let insideQuotes = false;
-
-                for (let i = 0; i < csv.length; i++) {
-                  const char = csv[i];
-                  const nextChar = csv[i + 1];
-
-                  if (char === '"') {
-                    if (insideQuotes && nextChar === '"') {
-                      // エスケープされたダブルクォート
-                      field += '"';
-                      i++;
-                    } else {
-                      // クォートのオン/オフ
-                      insideQuotes = !insideQuotes;
-                    }
-                  } else if (char === ',' && !insideQuotes) {
-                    // カンマで区切り（クォート外のみ）
-                    row.push(field);
-                    field = '';
-                  } else if ((char === '\n' || char === '\r') && !insideQuotes) {
-                    // 改行で行終了（クォート外のみ）
-                    if (field.trim() || row.length > 0) {
-                      row.push(field);
-                      rows.push(row);
-                      row = [];
-                      field = '';
-                    }
-                    // \r\n 対応
-                    if (char === '\r' && nextChar === '\n') {
-                      i++;
-                    }
-                  } else {
-                    field += char;
-                  }
-                }
-
-                // 最後のフィールドと行を追加
-                if (field.trim() || row.length > 0) {
-                  row.push(field);
-                  rows.push(row);
-                }
-
-                return rows;
-              };
-
-              const rows = parseCSVWithNewlines(text);
-              console.log(`📊 取得したCSV行数: ${rows.length}`);
-
-              // ヘッダー行を除外
-              questions = rows.slice(1).map((row) => {
-                // ダブルクォートを削除してクリーンアップ
-                const parts = row.map(cell => {
-                  let s = cell.trim();
-                  // ダブルクォートで囲まれている場合は削除
-                  if (s.startsWith('"') && s.endsWith('"')) {
-                    s = s.slice(1, -1);
-                  }
-                  // エスケープされたダブルクォートを戻す
-                  s = s.replace(/""/g, '"');
-                  return s;
-                });
-
-                if (!parts[0] || parts.length < 10) {
-                  return null;
-                }
-
-                const correctRaw = parts[8] || '0';
-                const correctArr = correctRaw.includes(',')
-                  ? correctRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-                  : [parseInt(correctRaw) || 0];
-                return {
-                  id: parts[0] || '',
-                  category: parts[1] || '',
-                  chapter: parts[2] || '',
-                  question: parts[3] || '',
-                  options: [
-                    parts[4] || '',
-                    parts[5] || '',
-                    parts[6] || '',
-                    parts[7] || ''
-                  ],
-                  correct: correctArr,
-                  explanation: parts[9] || ''
-                };
-              }).filter(q => q !== null);
-
-              console.log(`✅ ${questions.length}問のデータを取得しました`);
-              
-
-              
-              // デバッグ：最初の問題のデータ構造を確認
-              if (questions.length > 0) {
-                console.log('【最初の問題データ】');
-                console.log('ID:', questions[0].id);
-                console.log('Category:', questions[0].category);
-                console.log('Chapter:', questions[0].chapter);
-                console.log('Question:', questions[0].question?.substring(0, 50));
-                console.log('Options:', questions[0].options);
-                console.log('Correct:', questions[0].correct);
-                console.log('Explanation:', questions[0].explanation?.substring(0, 50));
-              }
-              break;
-            }
-          } catch (err) {
-            lastError = err;
-            console.log('この方法は失敗:', err.message);
-            continue;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.files && data.files.length > 0) {
+            setSpreadsheetList(data.files);
+            setListLoading(false);
+            return;
           }
         }
 
-        if (!questions || questions.length === 0) {
-          throw new Error(
-            'データが取得されませんでした。' +
-            '【確認事項】\n' +
-            '1. Google Sheet ID が正しいか確認してください\n' +
-            '2. Google Sheet が「リンクを知っている人は表示可能」に設定されているか確認\n' +
-            '3. シート名が「questions」か確認してください\n' +
-            (lastError ? `\nエラー詳細: ${lastError.message}` : '')
-          );
-        }
-
-        console.log(`✅ ${questions.length}問のデータを取得しました`);
-        setQuestions(questions);
-
-        // スプレッドシートのタイトルを取得
-        try {
-          // CSVエクスポートのContent-Dispositionヘッダーからファイル名を取得
-          const titleRes = await fetch(
-            `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`,
-            { method: 'GET', mode: 'cors' }
-          );
-          if (titleRes.ok) {
-            const disposition = titleRes.headers.get('Content-Disposition');
-            console.log('📄 Content-Disposition:', disposition);
-            if (disposition) {
-              // filename*=UTF-8''ファイル名 または filename="ファイル名" を抽出
-              const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-              const plainMatch = disposition.match(/filename="([^"]+)"/i);
-              let fileName = utf8Match
-                ? decodeURIComponent(utf8Match[1])
-                : plainMatch
-                ? plainMatch[1]
-                : null;
-              // ".csv" 拡張子を除去
-              if (fileName) {
-                fileName = fileName.replace(/\.csv$/i, '');
-                setSheetTitle(fileName);
-                console.log('📄 スプレッドシートタイトル:', fileName);
-              }
-            }
-          }
-        } catch (titleErr) {
-          console.log('⚠️ タイトル取得に失敗:', titleErr.message);
-        }
-
-        // GASから最終更新日を取得
-        try {
-          const gasRes = await fetch(GAS_URL, { redirect: 'follow' });
-          const text = await gasRes.text();
-          // HtmlServiceはHTMLで返るのでJSONを抽出
-          const match = text.match(/\{.*\}/s);
-          if (match) {
-            const gasData = JSON.parse(match[0]);
-            if (gasData.lastUpdated) {
-              setLastUpdated(gasData.lastUpdated);
-              console.log('📅 最終更新日:', gasData.lastUpdated);
-            }
-          }
-        } catch (gasErr) {
-          console.log('⚠️ 最終更新日の取得に失敗:', gasErr.message);
-        }
-
-        setLoading(false);
+        throw new Error('Drive API unavailable without API key');
       } catch (err) {
-        console.error('❌ エラーが発生しました:', err);
-        setError(err.message);
-        setLoading(false);
+        console.warn('Drive API取得失敗 (CORS制限のため手動入力に切り替え):', err.message);
+        setListError('cors');
+        setListLoading(false);
       }
     };
 
-    fetchQuestions();
+    fetchFileList();
   }, []);
 
   // =========================================
-  // ユーティリティ関数
+  // Google Sheets からデータを取得
   // =========================================
+  const fetchQuestions = async (sheetId) => {
+    setLoading(true);
+    setError(null);
 
-  // CSV パース関数（ダブルクォート内のカンマと改行を正しく処理）
+    try {
+      const urls = [
+        `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/query?tqx=out:json&sheet=${SHEET_NAME}`,
+        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`,
+      ];
+
+      let questions = null;
+      let lastError = null;
+
+      for (const url of urls) {
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            mode: 'cors',
+            headers: { 'Accept': 'application/json, text/plain, */*' }
+          });
+
+          if (!response.ok) continue;
+
+          const text = await response.text();
+
+          if (text.includes('google.visualization')) {
+            const jsonString = text.substring(47).slice(0, -2);
+            const jsonData = JSON.parse(jsonString);
+
+            questions = jsonData.table.rows.map((row) => {
+              const cols = row.c;
+              if (!cols[0] || !cols[0].v) return null;
+              const correctRaw = String(cols[8].v || '0');
+              const correctArr = correctRaw.includes(',')
+                ? correctRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+                : [parseInt(correctRaw) || 0];
+              return {
+                id: String(cols[0].v),
+                category: String(cols[1].v || ''),
+                chapter: String(cols[2].v || ''),
+                question: String(cols[3].v || ''),
+                options: [
+                  String(cols[4].v || ''),
+                  String(cols[5].v || ''),
+                  String(cols[6].v || ''),
+                  String(cols[7].v || '')
+                ],
+                correct: correctArr,
+                explanation: String(cols[9].v || '')
+              };
+            }).filter(q => q !== null);
+            break;
+          } else if (text.includes(',')) {
+            const parseCSVWithNewlines = (csv) => {
+              const rows = [];
+              let row = [];
+              let field = '';
+              let insideQuotes = false;
+              for (let i = 0; i < csv.length; i++) {
+                const char = csv[i];
+                const nextChar = csv[i + 1];
+                if (char === '"') {
+                  if (insideQuotes && nextChar === '"') { field += '"'; i++; }
+                  else insideQuotes = !insideQuotes;
+                } else if (char === ',' && !insideQuotes) {
+                  row.push(field); field = '';
+                } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+                  if (field.trim() || row.length > 0) {
+                    row.push(field); rows.push(row); row = []; field = '';
+                  }
+                  if (char === '\r' && nextChar === '\n') i++;
+                } else {
+                  field += char;
+                }
+              }
+              if (field.trim() || row.length > 0) { row.push(field); rows.push(row); }
+              return rows;
+            };
+
+            const rows = parseCSVWithNewlines(text);
+            questions = rows.slice(1).map((row) => {
+              const parts = row.map(cell => {
+                let s = cell.trim();
+                if (s.startsWith('"') && s.endsWith('"')) s = s.slice(1, -1);
+                s = s.replace(/""/g, '"');
+                return s;
+              });
+              if (!parts[0] || parts.length < 10) return null;
+              const correctRaw = parts[8] || '0';
+              const correctArr = correctRaw.includes(',')
+                ? correctRaw.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
+                : [parseInt(correctRaw) || 0];
+              return {
+                id: parts[0] || '',
+                category: parts[1] || '',
+                chapter: parts[2] || '',
+                question: parts[3] || '',
+                options: [parts[4] || '', parts[5] || '', parts[6] || '', parts[7] || ''],
+                correct: correctArr,
+                explanation: parts[9] || ''
+              };
+            }).filter(q => q !== null);
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+          continue;
+        }
+      }
+
+      if (!questions || questions.length === 0) {
+        throw new Error(
+          'データが取得されませんでした。\n' +
+          '・スプレッドシートが「リンクを知っている人は表示可能」に設定されているか確認してください\n' +
+          '・シート名が「questions」か確認してください\n' +
+          (lastError ? `\nエラー詳細: ${lastError.message}` : '')
+        );
+      }
+
+      setQuestions(questions);
+
+      // タイトル取得
+      try {
+        const titleRes = await fetch(
+          `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`,
+          { method: 'GET', mode: 'cors' }
+        );
+        if (titleRes.ok) {
+          const disposition = titleRes.headers.get('Content-Disposition');
+          if (disposition) {
+            const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+            const plainMatch = disposition.match(/filename="([^"]+)"/i);
+            let fileName = utf8Match
+              ? decodeURIComponent(utf8Match[1])
+              : plainMatch ? plainMatch[1] : null;
+            if (fileName) {
+              fileName = fileName.replace(/\.csv$/i, '');
+              setSheetTitle(fileName);
+            }
+          }
+        }
+      } catch (titleErr) {
+        console.log('⚠️ タイトル取得に失敗:', titleErr.message);
+      }
+
+      // GASから最終更新日を取得
+      try {
+        const gasRes = await fetch(GAS_URL, { redirect: 'follow' });
+        const text = await gasRes.text();
+        const match = text.match(/\{.*\}/s);
+        if (match) {
+          const gasData = JSON.parse(match[0]);
+          if (gasData.lastUpdated) setLastUpdated(gasData.lastUpdated);
+        }
+      } catch (gasErr) {
+        console.log('⚠️ 最終更新日の取得に失敗:', gasErr.message);
+      }
+
+      setLoading(false);
+      setPhase('home');
+    } catch (err) {
+      console.error('❌ エラー:', err);
+      setError(err.message);
+      setLoading(false);
+      setPhase('error');
+    }
+  };
+
+  // =========================================
+  // ファイル選択ハンドラ
+  // =========================================
+  const handleSelectSheet = (sheetId, sheetName) => {
+    setSelectedSheetId(sheetId);
+    setSelectedSheetName(sheetName);
+    setUsedQuestionIds(new Set());
+    setSheetTitle('');
+    setPhase('loading');
+    fetchQuestions(sheetId);
+  };
+
+  const handleBackToSelect = () => {
+    setPhase('select');
+    setQuestions([]);
+    setSheetTitle('');
+    setSelectedSheetId(null);
+    setSelectedSheetName('');
+    setShuffledQuestions([]);
+    setSelectedAnswers({});
+    setShowExplanation(false);
+    setPendingAnswers(new Set());
+  };
+
+  // =========================================
+  // ユーティリティ
+  // =========================================
   const shuffleArray = (array) => {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -304,65 +285,44 @@ const JSTQBExam = () => {
   };
 
   // =========================================
-  // イベントハンドラ
+  // クイズ操作ハンドラ
   // =========================================
-
   const handleStartQuiz = () => {
     if (questions.length === 0) return;
-
-    // 使用済みでない問題のみをフィルタリング
     const availableQuestions = questions.filter(q => !usedQuestionIds.has(q.id));
-
     let selected;
-    
-    // 利用可能な問題が50問未満の場合の処理
     if (availableQuestions.length < 50) {
-      alert(`利用可能な問題が${availableQuestions.length}問です。\n新しい出題セットを始めるため、使用済み問題の記録をリセットします。`);
-      // 使用済み記録をリセット
+      alert(`利用可能な問題が${availableQuestions.length}問です。\n使用済み問題の記録をリセットします。`);
       setUsedQuestionIds(new Set());
-      // リセット後に再度フィルタリング
       selected = shuffleArray(questions).slice(0, 50);
-      // 今回選択した問題のIDを記録
-      const newUsedIds = new Set(selected.map(q => q.id));
-      setUsedQuestionIds(newUsedIds);
+      setUsedQuestionIds(new Set(selected.map(q => q.id)));
     } else {
-      // 利用可能な問題から50問をランダムに選択
       selected = shuffleArray(availableQuestions).slice(0, 50);
-      // 今回選択した問題のIDを記録（既存の使用済み記録に追加）
       const newUsedIds = new Set(usedQuestionIds);
       selected.forEach(q => newUsedIds.add(q.id));
       setUsedQuestionIds(newUsedIds);
     }
-
-    // selected を使用して optionsMappings を生成（State更新前に実行）
     const optionsMappings = {};
     selected.forEach((q, idx) => {
-      const shuffledOptions = shuffleArray(
-        q.options.map((text, originalIdx) => ({ text, originalIdx }))
-      );
-      optionsMappings[idx] = shuffledOptions;
+      optionsMappings[idx] = shuffleArray(q.options.map((text, originalIdx) => ({ text, originalIdx })));
     });
-
-    // State を一度に更新
     setShuffledQuestions(selected);
     setOptionsMap(optionsMappings);
-    setQuizStarted(true);
     setCurrentQuestion(0);
     setSelectedAnswers({});
-    setShowResults(false);
     setShowExplanation(false);
     setPendingAnswers(new Set());
+    setPhase('quiz');
   };
 
   const handleReset = () => {
-    setQuizStarted(false);
     setCurrentQuestion(0);
     setSelectedAnswers({});
-    setShowResults(false);
     setShowExplanation(false);
     setShuffledQuestions([]);
     setOptionsMap({});
     setPendingAnswers(new Set());
+    setPhase('home');
   };
 
   const handleAnswerSelect = (answerIndex) => {
@@ -370,52 +330,38 @@ const JSTQBExam = () => {
     const question = shuffledQuestions[currentQuestion];
     const isMulti = question.correct.length > 1;
     if (isMulti) {
-      // 複数選択：トグル
       setPendingAnswers(prev => {
         const next = new Set(prev);
-        if (next.has(answerIndex)) {
-          next.delete(answerIndex);
-        } else {
-          next.add(answerIndex);
-        }
+        if (next.has(answerIndex)) next.delete(answerIndex);
+        else next.add(answerIndex);
         return next;
       });
     } else {
-      // 単一選択：置き換え
       setPendingAnswers(new Set([answerIndex]));
     }
   };
 
   const handleConfirmAnswer = () => {
     if (pendingAnswers.size === 0 || selectedAnswers[currentQuestion] !== undefined) return;
-
     const mappedOptions = optionsMap[currentQuestion];
-    // 選択した表示インデックス → 元のインデックスの配列（ソート済み）
     const selectedOriginalIndices = Array.from(pendingAnswers)
       .map(displayIdx => mappedOptions[displayIdx].originalIdx)
       .sort((a, b) => a - b);
-
-    setSelectedAnswers((prev) => ({
-      ...prev,
-      [currentQuestion]: selectedOriginalIndices,
-    }));
+    setSelectedAnswers(prev => ({ ...prev, [currentQuestion]: selectedOriginalIndices }));
     setPendingAnswers(new Set());
     setShowExplanation(true);
   };
 
   const handleNext = () => {
-    console.log(`[handleNext] currentQuestion: ${currentQuestion}, selectedAnswers[${currentQuestion}]: ${selectedAnswers[currentQuestion]}`);
     if (currentQuestion < shuffledQuestions.length - 1) {
       const nextQuestion = currentQuestion + 1;
-      console.log(`[handleNext] 次の問題: ${nextQuestion}, selectedAnswers[${nextQuestion}]: ${selectedAnswers[nextQuestion]}`);
       setCurrentQuestion(nextQuestion);
-      setShowExplanation(false);
+      setShowExplanation(selectedAnswers[nextQuestion] !== undefined);
       setPendingAnswers(new Set());
     }
   };
 
   const handlePrev = () => {
-    console.log(`[handlePrev] currentQuestion: ${currentQuestion}, selectedAnswers: `, selectedAnswers);
     if (currentQuestion > 0) {
       setCurrentQuestion(currentQuestion - 1);
       setShowExplanation(selectedAnswers[currentQuestion - 1] !== undefined);
@@ -424,60 +370,133 @@ const JSTQBExam = () => {
   };
 
   const handleSubmit = () => {
-    setShowResults(true);
+    setPhase('results');
   };
 
   // =========================================
-  // レンダリング: ローディング状態
+  // レンダリング: ファイル選択画面
   // =========================================
-  if (loading) {
+  if (phase === 'select') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-600 border-t-indigo-400 mx-auto mb-5"></div>
-          <p className="text-slate-400 text-sm tracking-widest uppercase">Loading</p>
+        <div className="max-w-lg w-full">
+          <div className="text-center mb-10">
+            <p className="text-indigo-400 text-xs tracking-widest uppercase mb-4">Exam Simulator</p>
+            <h1 className="text-3xl font-bold text-white leading-tight mb-2">模試ファイルを選択</h1>
+            <p className="text-slate-400 text-sm">使用するスプレッドシートを選んでください</p>
+          </div>
+
+          {listLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-600 border-t-indigo-400 mx-auto mb-4"></div>
+              <p className="text-slate-400 text-sm">ファイル一覧を取得中...</p>
+            </div>
+          ) : listError ? (
+            // Drive API が使えない場合: 手動入力フォーム
+            <div className="space-y-4">
+              <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5">
+                <p className="text-amber-400 text-xs tracking-widest uppercase mb-2">シートIDを入力</p>
+                <p className="text-slate-500 text-xs leading-relaxed mb-4">
+                  Google Drive のCORS制限により自動取得できませんでした。
+                  スプレッドシートのURLまたはIDを直接入力してください。
+                </p>
+                <ManualSheetInput onSelect={handleSelectSheet} />
+              </div>
+              <p className="text-slate-600 text-xs text-center leading-relaxed">
+                URLの例: docs.google.com/spreadsheets/d/<span className="text-slate-400">【ID】</span>/edit
+              </p>
+            </div>
+          ) : spreadsheetList.length === 0 ? (
+            <div className="space-y-4">
+              <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 text-center mb-4">
+                <p className="text-slate-400 text-sm">フォルダ内にスプレッドシートが見つかりませんでした</p>
+              </div>
+              <ManualSheetInput onSelect={handleSelectSheet} />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {spreadsheetList.map(file => (
+                <button
+                  key={file.id}
+                  onClick={() => handleSelectSheet(file.id, file.name)}
+                  className="w-full text-left bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-indigo-500 rounded-xl p-4 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileSpreadsheet size={18} className="text-indigo-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{file.name}</p>
+                      {file.modifiedTime && (
+                        <p className="text-slate-500 text-xs mt-0.5">
+                          更新: {new Date(file.modifiedTime).toLocaleDateString('ja-JP')}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronRight size={14} className="text-slate-600 group-hover:text-indigo-400 transition-colors shrink-0" />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <p className="text-slate-700 text-xs text-center mt-8">Build: {buildInfo.buildDate}</p>
         </div>
       </div>
     );
   }
 
   // =========================================
-  // レンダリング: エラー状態
+  // レンダリング: ローディング
   // =========================================
-  if (error) {
+  if (phase === 'loading') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-600 border-t-indigo-400 mx-auto mb-5"></div>
+          <p className="text-slate-400 text-sm tracking-widest uppercase">Loading</p>
+          {selectedSheetName && (
+            <p className="text-slate-600 text-xs mt-2 max-w-xs mx-auto truncate">{selectedSheetName}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================
+  // レンダリング: エラー
+  // =========================================
+  if (phase === 'error') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
           <p className="text-red-400 text-xs tracking-widest uppercase mb-3">Error</p>
           <h2 className="text-xl font-semibold text-white mb-4">データの取得に失敗しました</h2>
           <p className="text-slate-400 text-sm whitespace-pre-wrap mb-6 leading-relaxed">{error}</p>
-          <div className="border-t border-slate-700 pt-4 space-y-1 text-xs text-slate-500">
-            <p>・Google Sheet ID が正しいか確認</p>
-            <p>・スプレッドシートが公開設定になっているか確認</p>
-            <p>・シート名が「questions」か確認</p>
-          </div>
+          <button
+            onClick={handleBackToSelect}
+            className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-3 px-6 rounded-xl transition-all text-sm"
+          >
+            ← ファイル選択に戻る
+          </button>
         </div>
       </div>
     );
   }
 
   // =========================================
-  // レンダリング: クイズ未開始状態
+  // レンダリング: ホーム（クイズ未開始）
   // =========================================
-  if (!quizStarted) {
+  if (phase === 'home') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
         <div className="max-w-md w-full">
-          {/* タイトルエリア */}
           <div className="text-center mb-10">
             <p className="text-indigo-400 text-xs tracking-widest uppercase mb-4">Exam Simulator</p>
             <h1 className="text-3xl font-bold text-white leading-tight mb-2">
-              {sheetTitle || 'JSTQB Advanced Level'}
+              {sheetTitle || selectedSheetName || 'JSTQB Advanced Level'}
             </h1>
             <p className="text-slate-400 text-sm">{SHEET_NAME}</p>
           </div>
 
-          {/* 問題数バッジ */}
           <div className="flex justify-center gap-6 mb-10">
             <div className="text-center">
               <p className="text-2xl font-bold text-white">{questions.length}</p>
@@ -495,7 +514,6 @@ const JSTQBExam = () => {
             </div>
           </div>
 
-          {/* 進捗バー */}
           {usedQuestionIds.size > 0 && (
             <div className="mb-8">
               <div className="flex justify-between text-xs text-slate-500 mb-2">
@@ -521,19 +539,22 @@ const JSTQBExam = () => {
             </div>
           )}
 
-          {/* 開始ボタン */}
           <button
             onClick={handleStartQuiz}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 tracking-wide"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 tracking-wide mb-3"
           >
             模試を開始
           </button>
 
-          {/* フッター */}
+          <button
+            onClick={handleBackToSelect}
+            className="w-full bg-transparent hover:bg-slate-800 text-slate-500 hover:text-slate-300 font-medium py-2.5 px-6 rounded-xl transition-all text-sm border border-slate-700 hover:border-slate-600"
+          >
+            別のファイルを選択
+          </button>
+
           <div className="mt-8 text-center space-y-1">
-            {lastUpdated && (
-              <p className="text-slate-600 text-xs">最終更新: {lastUpdated}</p>
-            )}
+            {lastUpdated && <p className="text-slate-600 text-xs">最終更新: {lastUpdated}</p>}
             <p className="text-slate-700 text-xs">Build: {buildInfo.buildDate}</p>
           </div>
         </div>
@@ -542,31 +563,26 @@ const JSTQBExam = () => {
   }
 
   // =========================================
-  // レンダリング: 結果表示状態
+  // レンダリング: 結果
   // =========================================
-  if (showResults) {
+  if (phase === 'results') {
     const questionList = shuffledQuestions;
     const correctCount = Object.entries(selectedAnswers).reduce((count, [qIdx, selectedArr]) => {
       const q = questionList[qIdx];
       const correctArr = [...q.correct].sort((a, b) => a - b);
       const answeredArr = [...selectedArr].sort((a, b) => a - b);
-      const isCorrect = correctArr.length === answeredArr.length &&
-        correctArr.every((v, i) => v === answeredArr[i]);
+      const isCorrect = correctArr.length === answeredArr.length && correctArr.every((v, i) => v === answeredArr[i]);
       return count + (isCorrect ? 1 : 0);
     }, 0);
 
     const categoryStats = {};
     questionList.forEach((q, idx) => {
-      if (!categoryStats[q.category]) {
-        categoryStats[q.category] = { total: 0, correct: 0 };
-      }
+      if (!categoryStats[q.category]) categoryStats[q.category] = { total: 0, correct: 0 };
       categoryStats[q.category].total += 1;
       const selectedArr = selectedAnswers[idx] || [];
       const correctArr = [...q.correct].sort((a, b) => a - b);
       const answeredArr = [...selectedArr].sort((a, b) => a - b);
-      const isCorrect = correctArr.length === answeredArr.length &&
-        correctArr.every((v, i) => v === answeredArr[i]);
-      if (isCorrect) {
+      if (correctArr.length === answeredArr.length && correctArr.every((v, i) => v === answeredArr[i])) {
         categoryStats[q.category].correct += 1;
       }
     });
@@ -575,14 +591,13 @@ const JSTQBExam = () => {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 py-10">
         <div className="max-w-2xl mx-auto">
           <p className="text-indigo-400 text-xs tracking-widest uppercase text-center mb-8">Result</p>
-
-          {/* スコア */}
           <div className="text-center mb-10">
-            <p className="text-8xl font-bold text-white mb-2">{Math.round((correctCount / questionList.length) * 100)}<span className="text-3xl text-slate-500">%</span></p>
+            <p className="text-8xl font-bold text-white mb-2">
+              {Math.round((correctCount / questionList.length) * 100)}
+              <span className="text-3xl text-slate-500">%</span>
+            </p>
             <p className="text-slate-400 text-sm">{correctCount} / {questionList.length} 問正解</p>
           </div>
-
-          {/* 分野別成績 */}
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-6">
             <p className="text-slate-400 text-xs tracking-widest uppercase mb-5">分野別成績</p>
             <div className="space-y-4">
@@ -602,13 +617,18 @@ const JSTQBExam = () => {
               ))}
             </div>
           </div>
-
           <button
             onClick={handleReset}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 flex items-center justify-center gap-2 tracking-wide"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-indigo-900/50 flex items-center justify-center gap-2 tracking-wide mb-3"
           >
             <RotateCcw size={16} />
             もう一度チャレンジ
+          </button>
+          <button
+            onClick={handleBackToSelect}
+            className="w-full bg-transparent hover:bg-slate-800 text-slate-500 hover:text-slate-300 font-medium py-2.5 px-6 rounded-xl transition-all text-sm border border-slate-700 hover:border-slate-600"
+          >
+            別のファイルを選択
           </button>
         </div>
       </div>
@@ -629,21 +649,18 @@ const JSTQBExam = () => {
 
   const question = questionList[currentQuestion];
   const mappedOptions = optionsMap[currentQuestion] || [];
-  const correctAnswerIndices = question.correct; // 配列
+  const correctAnswerIndices = question.correct;
   const isMultiAnswer = correctAnswerIndices.length > 1;
   const displayOptions = mappedOptions.map((opt) => opt.text);
 
-  // シャッフル後の表示位置で正解インデックスを特定
   const correctPositionsInDisplay = mappedOptions
     .map((opt, displayIdx) => ({ displayIdx, originalIdx: opt.originalIdx }))
     .filter(({ originalIdx }) => correctAnswerIndices.includes(originalIdx))
     .map(({ displayIdx }) => displayIdx);
 
-  // 回答済みかどうか
   const answered = selectedAnswers[currentQuestion] !== undefined;
   const answeredOriginalIndices = answered ? selectedAnswers[currentQuestion] : [];
 
-  // 正解かどうかの判定
   const isAnswerCorrect = answered && (() => {
     const correctArr = [...correctAnswerIndices].sort((a, b) => a - b);
     const answeredArr = [...answeredOriginalIndices].sort((a, b) => a - b);
@@ -653,7 +670,6 @@ const JSTQBExam = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 py-8">
       <div className="max-w-3xl mx-auto">
-        {/* ヘッダー */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-3">
             <span className="text-indigo-400 text-sm font-medium">
@@ -671,7 +687,6 @@ const JSTQBExam = () => {
           </div>
         </div>
 
-        {/* 問題カード */}
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 mb-4">
           <p className="text-xs text-slate-500 mb-4">ID: {question.id}</p>
           {isMultiAnswer && (
@@ -682,7 +697,6 @@ const JSTQBExam = () => {
           </p>
         </div>
 
-        {/* 選択肢 */}
         <div className="space-y-2 mb-4">
           {displayOptions.map((option, index) => {
             const optOriginalIdx = mappedOptions[index]?.originalIdx;
@@ -693,13 +707,9 @@ const JSTQBExam = () => {
 
             let buttonClass = 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500 hover:text-white cursor-pointer';
             if (answered) {
-              if (isCorrectOption) {
-                buttonClass = 'border-emerald-500 bg-emerald-900/30 text-emerald-300';
-              } else if (isSelectedOption) {
-                buttonClass = 'border-red-500 bg-red-900/30 text-red-300';
-              } else {
-                buttonClass = 'border-slate-700 bg-slate-800/50 text-slate-500';
-              }
+              if (isCorrectOption) buttonClass = 'border-emerald-500 bg-emerald-900/30 text-emerald-300';
+              else if (isSelectedOption) buttonClass = 'border-red-500 bg-red-900/30 text-red-300';
+              else buttonClass = 'border-slate-700 bg-slate-800/50 text-slate-500';
             } else if (isSelectedOption) {
               buttonClass = 'border-indigo-500 bg-indigo-900/40 text-white cursor-pointer';
             }
@@ -742,7 +752,6 @@ const JSTQBExam = () => {
           })}
         </div>
 
-        {/* 回答ボタン */}
         {!answered && (
           <div className="mb-4">
             <button
@@ -757,12 +766,9 @@ const JSTQBExam = () => {
           </div>
         )}
 
-        {/* 解説 */}
         {showExplanation && (
           <div className={`rounded-xl p-5 mb-4 border ${
-            isAnswerCorrect
-              ? 'bg-emerald-900/20 border-emerald-800'
-              : 'bg-slate-800 border-slate-700'
+            isAnswerCorrect ? 'bg-emerald-900/20 border-emerald-800' : 'bg-slate-800 border-slate-700'
           }`}>
             <p className={`text-xs font-semibold tracking-widest uppercase mb-3 ${
               isAnswerCorrect ? 'text-emerald-400' : 'text-indigo-400'
@@ -784,7 +790,6 @@ const JSTQBExam = () => {
           </div>
         )}
 
-        {/* ナビゲーション */}
         <div className="flex gap-2 mb-3">
           <button
             onClick={handlePrev}
@@ -813,6 +818,65 @@ const JSTQBExam = () => {
           </button>
         )}
       </div>
+    </div>
+  );
+};
+
+// =========================================
+// 手動シートID入力コンポーネント
+// =========================================
+const ManualSheetInput = ({ onSelect }) => {
+  const [inputValue, setInputValue] = useState('');
+  const [nameValue, setNameValue] = useState('');
+  const [inputError, setInputError] = useState('');
+
+  const extractSheetId = (input) => {
+    const urlMatch = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    if (urlMatch) return urlMatch[1];
+    if (/^[a-zA-Z0-9_-]{20,}$/.test(input.trim())) return input.trim();
+    return null;
+  };
+
+  const handleSubmit = () => {
+    const sheetId = extractSheetId(inputValue);
+    if (!sheetId) {
+      setInputError('有効なスプレッドシートIDまたはURLを入力してください');
+      return;
+    }
+    setInputError('');
+    onSelect(sheetId, nameValue || 'カスタムシート');
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-slate-400 text-xs mb-1.5 block">スプレッドシートID または URL</label>
+        <input
+          type="text"
+          value={inputValue}
+          onChange={(e) => { setInputValue(e.target.value); setInputError(''); }}
+          placeholder="1abc...xyz または https://docs.google.com/..."
+          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+        />
+        {inputError && <p className="text-red-400 text-xs mt-1">{inputError}</p>}
+      </div>
+      <div>
+        <label className="text-slate-400 text-xs mb-1.5 block">表示名（任意）</label>
+        <input
+          type="text"
+          value={nameValue}
+          onChange={(e) => setNameValue(e.target.value)}
+          placeholder="例: JSTQB 模試 2024"
+          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+        />
+      </div>
+      <button
+        onClick={handleSubmit}
+        disabled={!inputValue.trim()}
+        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-xl transition-all text-sm"
+      >
+        このシートで開始
+      </button>
     </div>
   );
 };
