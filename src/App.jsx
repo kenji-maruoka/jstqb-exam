@@ -765,7 +765,7 @@ const SelectScreen = ({ listLoading, listError, spreadsheetList, onSelect, build
       <div className="max-w-md w-full">
         <div className="text-center mb-10">
           <p className="text-indigo-400 text-xs tracking-widest uppercase mb-4">Exam Simulator</p>
-          <h1 className="text-3xl font-bold text-white leading-tight mb-2">JSTQB 模試</h1>
+          <h1 className="text-3xl font-bold text-white leading-tight mb-2">模試アプリ</h1>
           <p className="text-slate-400 text-sm">使用する模試ファイルを選択してください</p>
         </div>
 
