@@ -192,18 +192,22 @@ const JSTQBExam = () => {
       try {
         // headers=0 を明示し、1行しかないシートでA1がヘッダー扱いされるのを防ぐ
         const configUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/query?tqx=out:json&sheet=${CONFIG_SHEET_NAME}&headers=0`;
+        console.log('🔍 [出題数デバッグ] configシートを取得します:', configUrl);
         const configRes = await fetch(configUrl, {
           method: 'GET',
           mode: 'cors',
           headers: { 'Accept': 'application/json, text/plain, */*' }
         });
+        console.log('🔍 [出題数デバッグ] HTTPステータス:', configRes.status, configRes.ok);
 
         let parsedCount = null;
         if (configRes.ok) {
           const configText = await configRes.text();
+          console.log('🔍 [出題数デバッグ] レスポンス本文(先頭300文字):', configText.slice(0, 300));
           if (configText.includes('google.visualization')) {
             const jsonString = configText.substring(47).slice(0, -2);
             const jsonData = JSON.parse(jsonString);
+            console.log('🔍 [出題数デバッグ] パース結果:', JSON.stringify(jsonData));
 
             if (jsonData.status === 'error') {
               console.log('ℹ️ configシートが見つかりません（未作成の場合はデフォルト値を使用します）:', jsonData.errors);
@@ -214,11 +218,16 @@ const JSTQBExam = () => {
               if (rawValue === undefined || rawValue === null) {
                 rawValue = jsonData?.table?.cols?.[0]?.label;
               }
+              console.log('🔍 [出題数デバッグ] 読み取った生の値:', rawValue, typeof rawValue);
               const n = parseInt(rawValue, 10);
               if (!isNaN(n) && n > 0) parsedCount = n;
               else console.log('ℹ️ configシートのA1セルから数値を読み取れませんでした。値:', rawValue);
             }
+          } else {
+            console.log('⚠️ [出題数デバッグ] レスポンスが想定形式(google.visualization)ではありません');
           }
+        } else {
+          console.log('⚠️ [出題数デバッグ] HTTPエラーのためconfigシートを読み取れませんでした');
         }
 
         setQuestionCount(parsedCount || DEFAULT_QUESTION_COUNT);
