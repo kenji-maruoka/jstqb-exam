@@ -10,7 +10,7 @@ const SHEET_NAME = 'questions';
 // 出題数を定義するシート名（このシートのA1セルに出題数を数値で記入する）
 const CONFIG_SHEET_NAME = 'config';
 // configシートが無い・値が不正な場合に使うデフォルト出題数
-const DEFAULT_QUESTION_COUNT = 10;
+const DEFAULT_QUESTION_COUNT = 50;
 
 const JSTQBExam = () => {
   // =========================================
@@ -190,7 +190,8 @@ const JSTQBExam = () => {
 
       // 出題数の取得（configシートのA1セルに書かれた数値を読み取る）
       try {
-        const configUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/query?tqx=out:json&sheet=${CONFIG_SHEET_NAME}`;
+        // headers=0 を明示し、1行しかないシートでA1がヘッダー扱いされるのを防ぐ
+        const configUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/query?tqx=out:json&sheet=${CONFIG_SHEET_NAME}&headers=0`;
         const configRes = await fetch(configUrl, {
           method: 'GET',
           mode: 'cors',
@@ -203,15 +204,28 @@ const JSTQBExam = () => {
           if (configText.includes('google.visualization')) {
             const jsonString = configText.substring(47).slice(0, -2);
             const jsonData = JSON.parse(jsonString);
-            const rawValue = jsonData?.table?.rows?.[0]?.c?.[0]?.v;
-            const n = parseInt(rawValue, 10);
-            if (!isNaN(n) && n > 0) parsedCount = n;
+
+            if (jsonData.status === 'error') {
+              console.log('ℹ️ configシートが見つかりません（未作成の場合はデフォルト値を使用します）:', jsonData.errors);
+            } else {
+              // 通常はrows[0]に値が入るが、headers=0が効かずヘッダー扱いされた場合は
+              // 値がcols[0].labelに入ることがあるためフォールバックする
+              let rawValue = jsonData?.table?.rows?.[0]?.c?.[0]?.v;
+              if (rawValue === undefined || rawValue === null) {
+                rawValue = jsonData?.table?.cols?.[0]?.label;
+              }
+              const n = parseInt(rawValue, 10);
+              if (!isNaN(n) && n > 0) parsedCount = n;
+              else console.log('ℹ️ configシートのA1セルから数値を読み取れませんでした。値:', rawValue);
+            }
           }
         }
 
         setQuestionCount(parsedCount || DEFAULT_QUESTION_COUNT);
         if (!parsedCount) {
-          console.log(`ℹ️ configシートが見つからない、または値が不正なため出題数はデフォルトの${DEFAULT_QUESTION_COUNT}問を使用します`);
+          console.log(`ℹ️ 出題数はデフォルトの${DEFAULT_QUESTION_COUNT}問を使用します`);
+        } else {
+          console.log(`✅ configシートから出題数を取得しました: ${parsedCount}問`);
         }
       } catch (configErr) {
         console.log('⚠️ 出題数設定の取得に失敗、デフォルト値を使用します:', configErr.message);
