@@ -7,6 +7,10 @@ import buildInfo from '../build-info.json';
 // =========================================
 const GAS_FILE_LIST_URL = 'https://script.google.com/macros/s/AKfycbxi1NOTkaDgFctucHZRweVOl7ZIg85VGUJ3QI9ozhOPWm8CG__-nvVj9TvazKWZatot_A/exec';
 const SHEET_NAME = 'questions';
+// 出題数を定義するシート名（このシートのA1セルに出題数を数値で記入する）
+const CONFIG_SHEET_NAME = 'config';
+// configシートが無い・値が不正な場合に使うデフォルト出題数
+const DEFAULT_QUESTION_COUNT = 50;
 
 const JSTQBExam = () => {
   // =========================================
@@ -32,6 +36,7 @@ const JSTQBExam = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [pendingAnswers, setPendingAnswers] = useState(new Set());
   const [sheetTitle, setSheetTitle] = useState('');
+  const [questionCount, setQuestionCount] = useState(DEFAULT_QUESTION_COUNT);
 
   const GAS_URL = '/api/last-updated';
 
@@ -183,6 +188,36 @@ const JSTQBExam = () => {
 
       setQuestions(questions);
 
+      // 出題数の取得（configシートのA1セルに書かれた数値を読み取る）
+      try {
+        const configUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/query?tqx=out:json&sheet=${CONFIG_SHEET_NAME}`;
+        const configRes = await fetch(configUrl, {
+          method: 'GET',
+          mode: 'cors',
+          headers: { 'Accept': 'application/json, text/plain, */*' }
+        });
+
+        let parsedCount = null;
+        if (configRes.ok) {
+          const configText = await configRes.text();
+          if (configText.includes('google.visualization')) {
+            const jsonString = configText.substring(47).slice(0, -2);
+            const jsonData = JSON.parse(jsonString);
+            const rawValue = jsonData?.table?.rows?.[0]?.c?.[0]?.v;
+            const n = parseInt(rawValue, 10);
+            if (!isNaN(n) && n > 0) parsedCount = n;
+          }
+        }
+
+        setQuestionCount(parsedCount || DEFAULT_QUESTION_COUNT);
+        if (!parsedCount) {
+          console.log(`ℹ️ configシートが見つからない、または値が不正なため出題数はデフォルトの${DEFAULT_QUESTION_COUNT}問を使用します`);
+        }
+      } catch (configErr) {
+        console.log('⚠️ 出題数設定の取得に失敗、デフォルト値を使用します:', configErr.message);
+        setQuestionCount(DEFAULT_QUESTION_COUNT);
+      }
+
       // タイトル取得
       try {
         const titleRes = await fetch(
@@ -238,6 +273,7 @@ const JSTQBExam = () => {
     setSelectedSheetName(sheetName);
     setUsedQuestionIds(new Set());
     setSheetTitle('');
+    setQuestionCount(DEFAULT_QUESTION_COUNT);
     setPhase('loading');
     fetchQuestions(sheetId);
   };
@@ -252,6 +288,7 @@ const JSTQBExam = () => {
     setSelectedAnswers({});
     setShowExplanation(false);
     setPendingAnswers(new Set());
+    setQuestionCount(DEFAULT_QUESTION_COUNT);
   };
 
   // =========================================
@@ -271,15 +308,18 @@ const JSTQBExam = () => {
   // =========================================
   const handleStartQuiz = () => {
     if (questions.length === 0) return;
+    // 出題数はファイルごとのconfig設定値（questionCount）を使用。
+    // ただし総問題数を超えないようにする。
+    const targetCount = Math.min(questionCount, questions.length);
     const availableQuestions = questions.filter(q => !usedQuestionIds.has(q.id));
     let selected;
-    if (availableQuestions.length < 50) {
+    if (availableQuestions.length < targetCount) {
       alert(`利用可能な問題が${availableQuestions.length}問です。\n使用済み問題の記録をリセットします。`);
       setUsedQuestionIds(new Set());
-      selected = shuffleArray(questions).slice(0, 50);
+      selected = shuffleArray(questions).slice(0, targetCount);
       setUsedQuestionIds(new Set(selected.map(q => q.id)));
     } else {
-      selected = shuffleArray(availableQuestions).slice(0, 50);
+      selected = shuffleArray(availableQuestions).slice(0, targetCount);
       const newUsedIds = new Set(usedQuestionIds);
       selected.forEach(q => newUsedIds.add(q.id));
       setUsedQuestionIds(newUsedIds);
@@ -430,7 +470,7 @@ const JSTQBExam = () => {
             </div>
             <div className="w-px bg-slate-700"></div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-white">50</p>
+              <p className="text-2xl font-bold text-white">{Math.min(questionCount, questions.length)}</p>
               <p className="text-slate-500 text-xs mt-1">出題数</p>
             </div>
             <div className="w-px bg-slate-700"></div>
