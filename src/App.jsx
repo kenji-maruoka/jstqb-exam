@@ -10,7 +10,7 @@ const SHEET_NAME = 'questions';
 // 出題数を定義するシート名（このシートのA1セルに出題数を数値で記入する）
 const CONFIG_SHEET_NAME = 'config';
 // configシートが無い・値が不正な場合に使うデフォルト出題数
-const DEFAULT_QUESTION_COUNT = 50;
+const DEFAULT_QUESTION_COUNT = 10;
 
 const JSTQBExam = () => {
   // =========================================
