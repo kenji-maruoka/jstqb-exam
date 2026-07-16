@@ -7,9 +7,8 @@ import buildInfo from '../build-info.json';
 // =========================================
 const GAS_FILE_LIST_URL = 'https://script.google.com/macros/s/AKfycbxi1NOTkaDgFctucHZRweVOl7ZIg85VGUJ3QI9ozhOPWm8CG__-nvVj9TvazKWZatot_A/exec';
 const SHEET_NAME = 'questions';
-// 出題数を定義するシート名（このシートのA1セルに出題数を数値で記入する）
-const CONFIG_SHEET_NAME = 'config';
-// configシートが無い・値が不正な場合に使うデフォルト出題数
+// questionsシートのK列（11列目）に出題数の数値を書いておくと、その値を出題数として使う
+// （未記入・不正な値の場合はデフォルト値を使用）
 const DEFAULT_QUESTION_COUNT = 10;
 
 const JSTQBExam = () => {
@@ -79,6 +78,9 @@ const JSTQBExam = () => {
 
       let questions = null;
       let lastError = null;
+      // questionsシートのK列（11列目）に書かれた数値を出題数として使う。
+      // どの行のK列でも良い（1箇所だけ書いておけばOK）
+      let extractedQuestionCount = null;
 
       for (const url of urls) {
         try {
@@ -95,6 +97,15 @@ const JSTQBExam = () => {
           if (text.includes('google.visualization')) {
             const jsonString = text.substring(47).slice(0, -2);
             const jsonData = JSON.parse(jsonString);
+
+            // K列（index 10）に出題数の数値があれば読み取る
+            jsonData.table.rows.forEach((row) => {
+              const kCell = row.c && row.c[10] ? row.c[10].v : null;
+              if (kCell !== undefined && kCell !== null && String(kCell).trim() !== '') {
+                const n = parseInt(kCell, 10);
+                if (!isNaN(n) && n > 0) extractedQuestionCount = n;
+              }
+            });
 
             questions = jsonData.table.rows.map((row) => {
               const cols = row.c;
@@ -147,6 +158,20 @@ const JSTQBExam = () => {
             };
 
             const rows = parseCSVWithNewlines(text);
+
+            // K列（index 10）に出題数の数値があれば読み取る
+            rows.slice(1).forEach((row) => {
+              let kCell = row[10];
+              if (kCell !== undefined && kCell !== null) {
+                kCell = String(kCell).trim();
+                if (kCell.startsWith('"') && kCell.endsWith('"')) kCell = kCell.slice(1, -1);
+                if (kCell !== '') {
+                  const n = parseInt(kCell, 10);
+                  if (!isNaN(n) && n > 0) extractedQuestionCount = n;
+                }
+              }
+            });
+
             questions = rows.slice(1).map((row) => {
               const parts = row.map(cell => {
                 let s = cell.trim();
@@ -188,57 +213,12 @@ const JSTQBExam = () => {
 
       setQuestions(questions);
 
-      // 出題数の取得（configシートのA1セルに書かれた数値を読み取る）
-      try {
-        // headers=0 を明示し、1行しかないシートでA1がヘッダー扱いされるのを防ぐ
-        const configUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/query?tqx=out:json&sheet=${CONFIG_SHEET_NAME}&headers=0`;
-        console.log('🔍 [出題数デバッグ] configシートを取得します:', configUrl);
-        const configRes = await fetch(configUrl, {
-          method: 'GET',
-          mode: 'cors',
-          headers: { 'Accept': 'application/json, text/plain, */*' }
-        });
-        console.log('🔍 [出題数デバッグ] HTTPステータス:', configRes.status, configRes.ok);
-
-        let parsedCount = null;
-        if (configRes.ok) {
-          const configText = await configRes.text();
-          console.log('🔍 [出題数デバッグ] レスポンス本文(先頭300文字):', configText.slice(0, 300));
-          if (configText.includes('google.visualization')) {
-            const jsonString = configText.substring(47).slice(0, -2);
-            const jsonData = JSON.parse(jsonString);
-            console.log('🔍 [出題数デバッグ] パース結果:', JSON.stringify(jsonData));
-
-            if (jsonData.status === 'error') {
-              console.log('ℹ️ configシートが見つかりません（未作成の場合はデフォルト値を使用します）:', jsonData.errors);
-            } else {
-              // 通常はrows[0]に値が入るが、headers=0が効かずヘッダー扱いされた場合は
-              // 値がcols[0].labelに入ることがあるためフォールバックする
-              let rawValue = jsonData?.table?.rows?.[0]?.c?.[0]?.v;
-              if (rawValue === undefined || rawValue === null) {
-                rawValue = jsonData?.table?.cols?.[0]?.label;
-              }
-              console.log('🔍 [出題数デバッグ] 読み取った生の値:', rawValue, typeof rawValue);
-              const n = parseInt(rawValue, 10);
-              if (!isNaN(n) && n > 0) parsedCount = n;
-              else console.log('ℹ️ configシートのA1セルから数値を読み取れませんでした。値:', rawValue);
-            }
-          } else {
-            console.log('⚠️ [出題数デバッグ] レスポンスが想定形式(google.visualization)ではありません');
-          }
-        } else {
-          console.log('⚠️ [出題数デバッグ] HTTPエラーのためconfigシートを読み取れませんでした');
-        }
-
-        setQuestionCount(parsedCount || DEFAULT_QUESTION_COUNT);
-        if (!parsedCount) {
-          console.log(`ℹ️ 出題数はデフォルトの${DEFAULT_QUESTION_COUNT}問を使用します`);
-        } else {
-          console.log(`✅ configシートから出題数を取得しました: ${parsedCount}問`);
-        }
-      } catch (configErr) {
-        console.log('⚠️ 出題数設定の取得に失敗、デフォルト値を使用します:', configErr.message);
-        setQuestionCount(DEFAULT_QUESTION_COUNT);
+      // 出題数の設定（questionsシートのK列から読み取った値。無ければデフォルト）
+      setQuestionCount(extractedQuestionCount || DEFAULT_QUESTION_COUNT);
+      if (extractedQuestionCount) {
+        console.log(`✅ K列から出題数を取得しました: ${extractedQuestionCount}問`);
+      } else {
+        console.log(`ℹ️ K列に出題数の設定が見つからないため、デフォルトの${DEFAULT_QUESTION_COUNT}問を使用します`);
       }
 
       // タイトル取得
