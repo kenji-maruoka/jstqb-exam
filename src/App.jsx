@@ -47,7 +47,7 @@ const JSTQBExam = () => {
       setListLoading(true);
       setListError(null);
       try {
-        const res = await fetch(GAS_FILE_LIST_URL);
+        const res = await fetch('/api/files');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
