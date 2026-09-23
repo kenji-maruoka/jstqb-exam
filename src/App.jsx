@@ -5,7 +5,7 @@ import buildInfo from '../build-info.json';
 // =========================================
 // 定数
 // =========================================
-const GAS_FILE_LIST_URL = 'https://script.google.com/macros/s/AKfycbxi1NOTkaDgFctucHZRweVOl7ZIg85VGUJ3QI9ozhOPWm8CG__-nvVj9TvazKWZatot_A/exec';
+const GAS_FILE_LIST_URL = '/api/files';
 const SHEET_NAME = 'questions';
 // questionsシートのK列（11列目）に出題数の数値を書いておくと、その値を出題数として使う
 // （未記入・不正な値の場合はデフォルト値を使用）
@@ -47,7 +47,7 @@ const JSTQBExam = () => {
       setListLoading(true);
       setListError(null);
       try {
-        const res = await fetch(GAS_FILE_LIST_URL);
+        const res = await fetch('/api/files');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.error) throw new Error(data.error);
